@@ -1,0 +1,34 @@
+[
+  {
+    "featureKey": "lab_blood_parser",
+    "featureName": "Lab / Blood Report Parser",
+    "productArea": "lab",
+    "touchpointType": "report",
+    "isClinical": true,
+    "featureTouchpointId": "ad19c2ab-2a45-49d2-93c9-9af06a68c394"
+  },
+  {
+    "featureKey": "mri_imaging_insights",
+    "featureName": "MRI / Imaging Insights",
+    "productArea": "imaging",
+    "touchpointType": "report",
+    "isClinical": true,
+    "featureTouchpointId": "d94ef737-77cf-4c84-9bd0-25fce6afbaa4"
+  },
+  {
+    "featureKey": "symptom_chat_companion",
+    "featureName": "Symptom Chat Companion",
+    "productArea": "chat",
+    "touchpointType": "conversation",
+    "isClinical": true,
+    "featureTouchpointId": "9ec45b52-5e34-4955-bd55-2864e80894b0"
+  },
+  {
+    "featureKey": "gp_question_builder",
+    "featureName": "GP Question Builder",
+    "productArea": "gp_prep",
+    "touchpointType": "builder",
+    "isClinical": false,
+    "featureTouchpointId": "11d599b3-42ba-45a9-bc2b-d020ef3c88d9"
+  }
+]

@@ -1,0 +1,34 @@
+[
+  {
+    "cohortKey": "new_lt_30d",
+    "cohortName": "New (<30d)",
+    "tenureBand": "<30d",
+    "planType": "free",
+    "userCohortId": "12f36b7f-bbd8-4611-a916-08b76737382c",
+    "isActive": true
+  },
+  {
+    "cohortKey": "established_30_180d",
+    "cohortName": "Established (30-180d)",
+    "tenureBand": "30-180d",
+    "planType": "plus",
+    "userCohortId": "2c5aafe2-64d2-498e-8b1e-6cc992b618c1",
+    "isActive": true
+  },
+  {
+    "cohortKey": "tenured_gt_180d",
+    "cohortName": "Tenured (>180d)",
+    "tenureBand": ">180d",
+    "planType": "plus",
+    "userCohortId": "0fff67db-5aea-4d8b-a02f-ed373aeea857",
+    "isActive": true
+  },
+  {
+    "cohortKey": "premium_active",
+    "cohortName": "Premium active",
+    "tenureBand": "30-180d",
+    "planType": "premium",
+    "userCohortId": "4629f294-6896-4764-8908-63296e50ff0e",
+    "isActive": true
+  }
+]
