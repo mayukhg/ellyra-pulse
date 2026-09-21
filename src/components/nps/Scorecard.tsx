@@ -13,7 +13,7 @@ import { AlertTriangle, ArrowDownRight, ArrowUpRight, HeartPulse, ShieldCheck } 
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { headline, medicalKpis, npsTrend } from "@/lib/nps-data";
-import { SectionHeading } from "./shared";
+import { MetricTooltip, SectionHeading } from "./shared";
 
 function Delta({ value, suffix = "" }: { value: number; suffix?: string }) {
   const up = value >= 0;
@@ -47,6 +47,11 @@ export function Scorecard() {
         <Card className="gap-0 border-clinical/20 bg-gradient-to-br from-clinical/8 to-transparent p-6">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
             <HeartPulse className="size-4 text-clinical" /> Overall NPS
+            <MetricTooltip label="Overall NPS">
+              Net Promoter Score equals the percentage of Promoters minus the percentage of
+              Detractors. It ranges from −100 to +100; Passives count toward responses but not the
+              formula.
+            </MetricTooltip>
           </div>
           <div className="mt-3 flex items-end gap-3">
             <span className="font-mono text-6xl leading-none font-semibold text-foreground">
@@ -56,15 +61,33 @@ export function Scorecard() {
           </div>
           <div className="mt-5 grid grid-cols-3 gap-3 text-sm">
             <div>
-              <div className="text-muted-foreground text-xs">Relational</div>
+              <div className="flex items-center gap-1 text-muted-foreground text-xs">
+                Relational
+                <MetricTooltip label="Relational NPS">
+                  Measures the patient’s overall relationship with Ellyra, independent of one
+                  specific interaction or feature.
+                </MetricTooltip>
+              </div>
               <div className="font-mono text-lg font-semibold">+{headline.relational}</div>
             </div>
             <div>
-              <div className="text-muted-foreground text-xs">Transactional</div>
+              <div className="flex items-center gap-1 text-muted-foreground text-xs">
+                Transactional
+                <MetricTooltip label="Transactional NPS">
+                  Measures sentiment immediately after a specific experience, such as parsing a
+                  report or completing a symptom chat.
+                </MetricTooltip>
+              </div>
               <div className="font-mono text-lg font-semibold">+{headline.transactional}</div>
             </div>
             <div>
-              <div className="text-muted-foreground text-xs">Response rate</div>
+              <div className="flex items-center gap-1 text-muted-foreground text-xs">
+                Response rate
+                <MetricTooltip label="Response rate">
+                  The percentage of delivered NPS surveys that received a valid 0–10 response in
+                  the selected period.
+                </MetricTooltip>
+              </div>
               <div className="font-mono text-lg font-semibold">{headline.responseRate}%</div>
             </div>
           </div>
@@ -74,13 +97,17 @@ export function Scorecard() {
                 <div key={d.label} className={d.cls} style={{ width: `${d.value}%` }} />
               ))}
             </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
               {dist.map((d) => (
                 <span key={d.label} className="inline-flex items-center gap-1.5">
                   <span className={cn("size-2 rounded-full", d.cls)} />
                   {d.label} · {d.value}%
                 </span>
               ))}
+              <MetricTooltip label="NPS distribution">
+                Promoters score 9–10, Passives score 7–8, and Detractors score 0–6. NPS subtracts
+                the Detractor percentage from the Promoter percentage.
+              </MetricTooltip>
             </div>
             <p className="pt-1 text-xs text-muted-foreground">
               {headline.responses.toLocaleString()} responses this period · response rate{" "}
@@ -185,6 +212,16 @@ export function Scorecard() {
                     </div>
                     <div className="mt-0.5 text-sm font-semibold text-foreground">{k.label}</div>
                   </div>
+                  <MetricTooltip label={k.label}>
+                    {k.key === "ard" &&
+                      "Anxiety Reduction Delta compares paired pre-report and post-report anxiety ratings. It is the share showing a positive shift; target >75%."}
+                    {k.key === "ccs" &&
+                      "Clinical Comprehension Score is the percentage of users who understood the explanation without a third-party search; target >85%."}
+                    {k.key === "hallucination" &&
+                      "The share of sessions with a reported clinical mismatch or inaccuracy. At or above 0.2%, the metric enters the P0 safety threshold."}
+                    {k.key === "disclaimer" &&
+                      "The share of feedback with negative sentiment about defensive legal or safety disclaimers; target <5%."}
+                  </MetricTooltip>
                   {k.status === "alarm" ? (
                     <span className="strobe inline-flex items-center gap-1 rounded-full bg-safety px-2 py-0.5 text-[10px] font-semibold text-background">
                       <AlertTriangle className="size-3" /> ALARM

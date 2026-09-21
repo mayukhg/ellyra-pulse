@@ -25,7 +25,7 @@ import {
   type Feature,
   type Verbatim,
 } from "@/lib/nps-data";
-import { Chip, SectionHeading, TierPill, redactText } from "./shared";
+import { Chip, MetricTooltip, SectionHeading, TierPill, redactText } from "./shared";
 
 type Polarity = "all" | "positive" | "negative";
 type SlaFilter = "all" | "Open" | "Contacted" | "Resolved" | "Escalated";
@@ -113,7 +113,32 @@ export function VerbatimHub({
         }
       />
 
-      <div className="mt-4 flex flex-wrap items-end gap-3 rounded-lg border border-border bg-muted/30 p-3">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-border bg-muted/20 p-3">
+          <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+            Time to First Contact
+            <MetricTooltip label="Time to First Contact">
+              Median elapsed time from creation of an eligible detractor or safety ticket to the
+              first recorded human outreach. P0 pages use a separate 15-minute response target.
+            </MetricTooltip>
+          </div>
+          <div className="mt-1 font-mono text-2xl font-semibold text-foreground">3h 18m</div>
+          <div className="mt-0.5 text-xs text-promoter">−42m vs prior period</div>
+        </div>
+        <div className="rounded-lg border border-border bg-muted/20 p-3">
+          <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+            Close rate
+            <MetricTooltip label="Close rate">
+              Percentage of closed-loop tickets created in the selected period that reached
+              Resolved status. Open, Contacted, and Escalated tickets remain in the denominator.
+            </MetricTooltip>
+          </div>
+          <div className="mt-1 font-mono text-2xl font-semibold text-foreground">74%</div>
+          <div className="mt-0.5 text-xs text-promoter">+6 pts vs prior period</div>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-end gap-3 rounded-lg border border-border bg-muted/30 p-3">
         <Select
           label="Feature"
           value={effFeature ?? "All features"}

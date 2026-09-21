@@ -2,7 +2,7 @@ import { Stethoscope, Wrench } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { aspectRows, type Aspect } from "@/lib/nps-data";
-import { SectionHeading } from "./shared";
+import { MetricTooltip, SectionHeading } from "./shared";
 
 export function AbsaExplorer({
   selected,
@@ -15,7 +15,24 @@ export function AbsaExplorer({
     <Card className="gap-0 p-5">
       <SectionHeading
         title="Aspect-based sentiment (ABSA) explorer"
-        description="Clinical taxonomy plus operational tags, with polarity split per aspect"
+        description={
+          <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="inline-flex items-center gap-1">
+              Aspect mentions
+              <MetricTooltip label="Aspect mentions">
+                Number of feedback responses tagged with the aspect. One response may contribute to
+                more than one aspect.
+              </MetricTooltip>
+            </span>
+            <span className="inline-flex items-center gap-1">
+              polarity split
+              <MetricTooltip label="Aspect polarity split">
+                Positive and negative shares among classified mentions for that aspect. The bars
+                show direction, while the mention count shows scale.
+              </MetricTooltip>
+            </span>
+          </span>
+        }
         right={
           selected && (
             <button

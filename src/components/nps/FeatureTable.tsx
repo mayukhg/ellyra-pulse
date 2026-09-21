@@ -2,7 +2,17 @@ import { ArrowDownRight, ArrowUpRight, ShieldAlert } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { featureRows, type Feature } from "@/lib/nps-data";
-import { SectionHeading } from "./shared";
+import { MetricTooltip, SectionHeading } from "./shared";
+
+const columnHelp = {
+  Feature: "The Ellyra product touchpoint associated with the survey response.",
+  NPS: "Feature-specific NPS: percentage of Promoters minus percentage of Detractors, from −100 to +100.",
+  MoM: "Point change in feature NPS versus the preceding calendar month.",
+  Responses: "Count of valid NPS responses attributed to this feature in the selected period.",
+  Distribution: "Percent split of Promoters (9–10), Passives (7–8), and Detractors (0–6), shown in that order.",
+  "Top driver": "The highest-impact recurring ABSA theme associated with this feature’s score.",
+  "Safety flags": "Responses flagged for possible clinical mismatch, unsafe reassurance, OCR error, or other immediate safety review.",
+} as const;
 
 export function FeatureTable({
   selected,
@@ -33,13 +43,14 @@ export function FeatureTable({
         <table className="w-full min-w-[820px] text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/40 text-left text-xs tracking-wide text-muted-foreground uppercase">
-              <th className="px-5 py-3 font-medium">Feature</th>
-              <th className="px-5 py-3 font-medium">NPS</th>
-              <th className="px-5 py-3 font-medium">MoM</th>
-              <th className="px-5 py-3 font-medium">Responses</th>
-              <th className="px-5 py-3 font-medium">Distribution</th>
-              <th className="px-5 py-3 font-medium">Top driver</th>
-              <th className="px-5 py-3 font-medium">Safety flags</th>
+               {Object.entries(columnHelp).map(([label, help]) => (
+                 <th key={label} className="px-5 py-3 font-medium">
+                   <span className="inline-flex items-center gap-1">
+                     {label}
+                     <MetricTooltip label={`${label} column`}>{help}</MetricTooltip>
+                   </span>
+                 </th>
+               ))}
             </tr>
           </thead>
           <tbody>
