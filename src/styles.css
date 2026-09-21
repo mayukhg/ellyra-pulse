@@ -59,6 +59,16 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-clinical: var(--clinical);
+  --color-clinical-foreground: var(--clinical-foreground);
+  --color-clinical-soft: var(--clinical-soft);
+  --color-promoter: var(--promoter);
+  --color-passive: var(--passive);
+  --color-detractor: var(--detractor);
+  --color-safety: var(--safety);
+  --color-canvas: var(--canvas);
+  --font-sans: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
 :root {
@@ -95,6 +105,14 @@
   --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
   --sidebar-border: oklch(0.929 0.013 255.508);
   --sidebar-ring: oklch(0.704 0.04 256.788);
+  --clinical: oklch(0.58 0.09 195);
+  --clinical-foreground: oklch(0.99 0.005 195);
+  --clinical-soft: oklch(0.95 0.025 195);
+  --promoter: oklch(0.55 0.12 163);
+  --passive: oklch(0.75 0.14 80);
+  --detractor: oklch(0.6 0.18 22);
+  --safety: oklch(0.56 0.22 18);
+  --canvas: oklch(0.975 0.004 240);
 }
 
 .dark {
@@ -141,4 +159,24 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
   }
+}
+
+.dark {
+  --clinical: oklch(0.72 0.1 195);
+  --clinical-foreground: oklch(0.18 0.03 195);
+  --clinical-soft: oklch(0.3 0.04 195);
+  --promoter: oklch(0.72 0.13 163);
+  --passive: oklch(0.8 0.13 80);
+  --detractor: oklch(0.7 0.17 22);
+  --safety: oklch(0.68 0.2 18);
+  --canvas: oklch(0.15 0.02 250);
+}
+
+@utility strobe {
+  animation: strobe-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes strobe-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in oklab, var(--safety) 45%, transparent); }
+  50% { opacity: 0.85; box-shadow: 0 0 0 6px color-mix(in oklab, var(--safety) 0%, transparent); }
 }
