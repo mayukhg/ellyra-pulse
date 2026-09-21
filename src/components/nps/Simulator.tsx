@@ -131,7 +131,7 @@ const STEPS = [
 ] as const;
 
 export function Simulator() {
-  const [input, setInput] = useState(SAMPLES[0]);
+  const [input, setInput] = useState<string>(SAMPLES[0]!);
   const [step, setStep] = useState(-1);
   const [result, setResult] = useState<Result | null>(null);
 
