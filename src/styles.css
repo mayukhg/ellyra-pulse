@@ -160,3 +160,23 @@
     color: var(--color-foreground);
   }
 }
+
+.dark {
+  --clinical: oklch(0.72 0.1 195);
+  --clinical-foreground: oklch(0.18 0.03 195);
+  --clinical-soft: oklch(0.3 0.04 195);
+  --promoter: oklch(0.72 0.13 163);
+  --passive: oklch(0.8 0.13 80);
+  --detractor: oklch(0.7 0.17 22);
+  --safety: oklch(0.68 0.2 18);
+  --canvas: oklch(0.15 0.02 250);
+}
+
+@utility strobe {
+  animation: strobe-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes strobe-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in oklab, var(--safety) 45%, transparent); }
+  50% { opacity: 0.85; box-shadow: 0 0 0 6px color-mix(in oklab, var(--safety) 0%, transparent); }
+}
