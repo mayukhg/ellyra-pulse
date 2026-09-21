@@ -14,7 +14,7 @@ import { AlertOctagon } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { quadrantPoints, type Feature, type QuadrantPoint } from "@/lib/nps-data";
-import { Chip, SectionHeading } from "./shared";
+import { Chip, MetricTooltip, SectionHeading } from "./shared";
 
 const VOL_MID = 300;
 const IMPACT_MID = 0;
@@ -43,7 +43,26 @@ export function QuadrantScatter({
     <Card className="gap-0 p-5">
       <SectionHeading
         title="Root-cause quadrant analysis"
-        description="Feedback volume vs. impact on net sentiment. Click a dot to filter verbatims."
+        description={
+          <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="inline-flex items-center gap-1">
+              Feedback volume
+              <MetricTooltip label="Feedback volume axis">
+                Number of verbatims mentioning the theme during the selected period. Farther right
+                means the theme occurs more often.
+              </MetricTooltip>
+            </span>
+            <span aria-hidden="true">vs.</span>
+            <span className="inline-flex items-center gap-1">
+              impact on net sentiment
+              <MetricTooltip label="Impact on net sentiment axis">
+                Estimated point contribution to aggregate sentiment after controlling for feature
+                and cohort. Negative values reduce sentiment; positive values improve it.
+              </MetricTooltip>
+            </span>
+            <span>Click a dot to filter verbatims.</span>
+          </span>
+        }
         right={
           selected && (
             <button

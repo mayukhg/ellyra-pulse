@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Activity, FlaskConical, HeartPulse, LayoutDashboard, MessagesSquare } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { Scorecard } from "@/components/nps/Scorecard";
 import { FeatureTable } from "@/components/nps/FeatureTable";
 import { QuadrantScatter } from "@/components/nps/QuadrantScatter";
@@ -46,6 +47,7 @@ function Index() {
   };
 
   return (
+    <TooltipProvider delayDuration={250}>
     <div className="min-h-screen bg-canvas">
       <Toaster position="top-right" />
       <header className="border-b border-border bg-background/80 backdrop-blur">
@@ -139,5 +141,6 @@ function Index() {
         </Tabs>
       </main>
     </div>
+    </TooltipProvider>
   );
 }

@@ -1,5 +1,38 @@
+import { Info } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { Tier } from "@/lib/nps-data";
+
+export function MetricTooltip({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={`About ${label}`}
+          className={cn(
+            "inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            className,
+          )}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Info className="size-3.5" aria-hidden="true" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-72 bg-popover text-popover-foreground shadow-md" sideOffset={6}>
+        <p className="leading-relaxed">{children}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 export function TierPill({ tier, score }: { tier: Tier; score?: number }) {
   const styles: Record<Tier, string> = {
@@ -56,7 +89,7 @@ export function SectionHeading({
   right,
 }: {
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   right?: React.ReactNode;
 }) {
   return (
