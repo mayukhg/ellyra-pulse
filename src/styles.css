@@ -105,6 +105,14 @@
   --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
   --sidebar-border: oklch(0.929 0.013 255.508);
   --sidebar-ring: oklch(0.704 0.04 256.788);
+  --clinical: oklch(0.58 0.09 195);
+  --clinical-foreground: oklch(0.99 0.005 195);
+  --clinical-soft: oklch(0.95 0.025 195);
+  --promoter: oklch(0.55 0.12 163);
+  --passive: oklch(0.75 0.14 80);
+  --detractor: oklch(0.6 0.18 22);
+  --safety: oklch(0.56 0.22 18);
+  --canvas: oklch(0.975 0.004 240);
 }
 
 .dark {
