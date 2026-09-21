@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -32,6 +33,8 @@ function Delta({ value, suffix = "" }: { value: number; suffix?: string }) {
 }
 
 export function Scorecard() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const dist = [
     { label: "Promoters (9-10)", value: headline.promoters, cls: "bg-promoter" },
     { label: "Passives (7-8)", value: headline.passives, cls: "bg-passive" },
@@ -93,6 +96,7 @@ export function Scorecard() {
             description="Rolling 7-month NPS by survey type"
           />
           <div className="mt-4 h-[248px]">
+            {mounted && (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={npsTrend} margin={{ left: -18, right: 8, top: 8 }}>
                 <defs>
@@ -148,6 +152,7 @@ export function Scorecard() {
                 />
               </AreaChart>
             </ResponsiveContainer>
+            )}
           </div>
         </Card>
       </div>

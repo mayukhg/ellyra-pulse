@@ -114,10 +114,7 @@ function Index() {
 
           <TabsContent value="rootcause" className="space-y-6">
             <QuadrantScatter featureFilter={feature} selected={theme} onSelect={selectTheme} />
-            <div className="grid gap-6 lg:grid-cols-2">
-              <AbsaExplorer selected={aspect} onSelect={setAspect} />
-              <FeatureTable selected={feature} onSelect={setFeature} />
-            </div>
+            <AbsaExplorer selected={aspect} onSelect={setAspect} />
           </TabsContent>
 
           <TabsContent value="verbatims">
