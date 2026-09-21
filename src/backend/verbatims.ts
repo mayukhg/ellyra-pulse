@@ -22,7 +22,9 @@ function decodeCursor(cursor: string): { receivedAt: string; responseId: string 
 
 function toListItem(row: NpsResponseRow): VerbatimListItem {
   const ticket = store.ticketByResponseId(row.responseId);
-  const feature = store.featureTouchpoints.find((f) => f.featureTouchpointId === row.featureTouchpointId);
+  const feature = store.featureTouchpoints.find(
+    (f) => f.featureTouchpointId === row.featureTouchpointId,
+  );
 
   return {
     id: row.responseId,
@@ -107,7 +109,8 @@ export function queryVerbatims(query: VerbatimQuery): CursorPage<VerbatimListIte
 
   return {
     data: page.map(toListItem),
-    page: { nextCursor: hasMore ? encodeCursor(page[page.length - 1]) : null, hasMore },
+    // hasMore implies page.length === query.limit > 0, so this index is always in bounds.
+    page: { nextCursor: hasMore ? encodeCursor(page[page.length - 1]!) : null, hasMore },
     meta: { requestId: newRequestId(), generatedAt: new Date().toISOString() },
   };
 }

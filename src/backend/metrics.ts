@@ -23,7 +23,10 @@ function inRange(row: NpsResponseRow, filters: AnalyticsFilters): boolean {
   const receivedAt = row.receivedAt.slice(0, 10);
   if (receivedAt < filters.from || receivedAt >= filters.to) return false;
   if (filters.surveyType && row.surveyType !== filters.surveyType) return false;
-  if (filters.feature && store.featureByKey(filters.feature)?.featureTouchpointId !== row.featureTouchpointId) {
+  if (
+    filters.feature &&
+    store.featureByKey(filters.feature)?.featureTouchpointId !== row.featureTouchpointId
+  ) {
     return false;
   }
   if (filters.aspect && !row.aspects.some((a) => a.aspect === filters.aspect)) return false;
@@ -71,13 +74,17 @@ export function getExecutiveMetrics(filters: AnalyticsFilters): ExecutiveMetrics
     .map((t) => (new Date(t.firstContactAt!).getTime() - new Date(t.createdAt).getTime()) / 1000)
     .sort((a, b) => a - b);
   const medianTimeToFirstContactSeconds = contactSeconds.length
-    ? contactSeconds[Math.floor(contactSeconds.length / 2)]
+    ? (contactSeconds[Math.floor(contactSeconds.length / 2)] ?? null)
     : null;
 
   return {
     generatedAt: new Date().toISOString(),
     period: { from: filters.from, to: filters.to, timezone: filters.timezone },
-    sample: { responses: rows.length, eligibleSurveys: eligible.length, suppressed: rows.length < PRIVACY_MIN_COHORT_SIZE },
+    sample: {
+      responses: rows.length,
+      eligibleSurveys: eligible.length,
+      suppressed: rows.length < PRIVACY_MIN_COHORT_SIZE,
+    },
     nps: {
       overall: { value: npsScore(rows), previousValue: null, delta: null },
       relational: { value: npsScore(relationalRows), previousValue: null, delta: null },
@@ -95,7 +102,12 @@ export function getExecutiveMetrics(filters: AnalyticsFilters): ExecutiveMetrics
     medicalTrust: {
       // TODO: wire real ARD/CCS pairing once the pre/post-anxiety and comprehension survey
       // fields land in fact_nps_response; placeholders keep the response shape stable.
-      anxietyReductionDelta: { value: 0, previousValue: null, delta: null, target: { operator: "gt", value: 75 } },
+      anxietyReductionDelta: {
+        value: 0,
+        previousValue: null,
+        delta: null,
+        target: { operator: "gt", value: 75 },
+      },
       clinicalComprehensionScore: {
         value: 0,
         previousValue: null,
@@ -105,14 +117,23 @@ export function getExecutiveMetrics(filters: AnalyticsFilters): ExecutiveMetrics
       hallucinationFlagRate: {
         value: rows.length
           ? Number(
-              ((rows.filter((r) => r.safetyReasonCodes.includes("contradicts_clinician")).length / rows.length) * 100).toFixed(2),
+              (
+                (rows.filter((r) => r.safetyReasonCodes.includes("contradicts_clinician")).length /
+                  rows.length) *
+                100
+              ).toFixed(2),
             )
           : 0,
         previousValue: null,
         delta: null,
         target: { operator: "lt", value: 0.2 },
       },
-      disclaimerFatigueIndex: { value: 0, previousValue: null, delta: null, target: { operator: "lt", value: 5 } },
+      disclaimerFatigueIndex: {
+        value: 0,
+        previousValue: null,
+        delta: null,
+        target: { operator: "lt", value: 5 },
+      },
     },
     closedLoop: {
       medianTimeToFirstContactSeconds,
@@ -142,7 +163,11 @@ export function getFeatureMetrics(filters: AnalyticsFilters): FeatureMetric[] {
       let topDriver: FeatureMetric["topDriver"] = null;
       for (const [aspect, { count, impact }] of aspectImpact) {
         if (!topDriver || impact > topDriver.impact) {
-          topDriver = { aspect, label: aspect.replace(/_/g, " "), impact: Number(impact.toFixed(2)) };
+          topDriver = {
+            aspect,
+            label: aspect.replace(/_/g, " "),
+            impact: Number(impact.toFixed(2)),
+          };
         }
         void count;
       }
@@ -161,14 +186,20 @@ export function getFeatureMetrics(filters: AnalyticsFilters): FeatureMetric[] {
     .sort((a, b) => b.responseCount - a.responseCount);
 }
 
-export function getQuadrant(filters: AnalyticsFilters, minVolume: number, criticalOnly?: boolean): QuadrantPointDto[] {
+export function getQuadrant(
+  filters: AnalyticsFilters,
+  minVolume: number,
+  criticalOnly?: boolean,
+): QuadrantPointDto[] {
   const rows = store.responses.filter((r) => inRange(r, filters));
   const points: QuadrantPointDto[] = [];
 
   for (const feature of store.featureTouchpoints) {
     for (const aspect of ASPECT_TAXONOMY) {
       const matching = rows.filter(
-        (r) => r.featureTouchpointId === feature.featureTouchpointId && r.aspects.some((a) => a.aspect === aspect),
+        (r) =>
+          r.featureTouchpointId === feature.featureTouchpointId &&
+          r.aspects.some((a) => a.aspect === aspect),
       );
       if (matching.length === 0) continue;
 

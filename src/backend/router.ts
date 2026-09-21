@@ -4,16 +4,12 @@
  * The pinned @tanstack/react-start (1.168.32) + @tanstack/react-router (1.170.18) in this
  * project's package.json do not support file-based "server routes" — the router-generator only
  * recognises a file as a route if it exports `Route` (via `createFileRoute`), and there is no
- * `createServerFileRoute`/`ServerRoute` API anywhere in the installed packages. An earlier
- * version of this scaffold wrote routes under src/routes/api/** using that nonexistent API;
- * they were silently excluded from the route tree (confirmed by running `bun run dev` and
- * seeing "does not export a Route" warnings for every one of them).
+ * `createServerFileRoute`/`ServerRoute` API anywhere in the installed packages. This dispatcher
+ * is invoked directly from src/server.ts before any request reaches the TanStack Router SSR
+ * handler.
  *
- * Given that, this dispatcher is invoked directly from src/server.ts — the app's actual fetch
- * entry point — before any request reaches the TanStack Router SSR handler. Every endpoint from
- * docs/DESIGN_UI.md §5 is implemented here as a plain (Request) => Promise<Response> function,
- * reusing the same business logic (src/backend/{metrics,verbatims,ingestion,store}.ts)
- * unchanged.
+ * Storage is selected via src/backend/repositories/index.ts (Postgres if DATABASE_URL is set,
+ * otherwise the in-memory scaffold seeded from data/synthetic/).
  */
 import {
   analyticsFiltersSchema,
@@ -24,30 +20,27 @@ import {
   verbatimQuerySchema,
   type RealtimeEvent,
   type SimulateWorkflowResponse,
-  type TicketStatus,
 } from "./contracts";
-import { jsonError, jsonOk, newRequestId, parseBody, parseQuery } from "./http";
+import { jsonError, jsonOk, newRequestId, parseQuery } from "./http";
 import {
-  requireIngestionCredential,
   requireRole,
   requireWorkforceSession,
+  verifyIngestionSignature,
   UnauthenticatedError,
   UnauthorisedError,
 } from "./auth";
-import { getAbsaRows, getExecutiveMetrics, getFeatureMetrics, getQuadrant } from "./metrics";
-import { queryVerbatims } from "./verbatims";
-import { runPipelineStages, ingest } from "./ingestion/pipeline";
+import { runPipelineStages } from "./ingestion/pipeline";
 import { ABSA_CLASSIFIER_VERSION } from "./ingestion/absa";
-import { store } from "./store";
-import { randomUUID } from "node:crypto";
+import { pageClinicalOnCall } from "./paging";
 import { loadSyntheticFixtures } from "./fixtures";
+import { getRepository } from "./repositories";
+import { randomUUID } from "node:crypto";
 
-// Load the demo dataset once, on first request into the API surface. See
-// data/synthetic/README.md — not for production use.
 let fixturesLoaded = false;
 function ensureFixturesLoaded() {
   if (fixturesLoaded) return;
   fixturesLoaded = true;
+  if (getRepository().kind !== "memory") return; // fixtures are for the in-memory scaffold only
   try {
     loadSyntheticFixtures();
   } catch (err) {
@@ -59,50 +52,58 @@ function authOrError(request: Request, requestId: string) {
   try {
     return { session: requireWorkforceSession(request) };
   } catch (err) {
-    if (err instanceof UnauthenticatedError) {
+    if (err instanceof UnauthenticatedError)
       return { response: jsonError(401, "unauthenticated", err.message, requestId) };
-    }
-    if (err instanceof UnauthorisedError) {
+    if (err instanceof UnauthorisedError)
       return { response: jsonError(403, "unauthorised", err.message, requestId) };
-    }
     throw err;
   }
 }
 
-async function handleExecutiveMetrics(request: Request, requestId: string, url: URL): Promise<Response> {
+async function handleExecutiveMetrics(
+  request: Request,
+  requestId: string,
+  url: URL,
+): Promise<Response> {
   const auth = authOrError(request, requestId);
   if (auth.response) return auth.response;
-
   const parsed = parseQuery(url, analyticsFiltersSchema, requestId);
   if (!parsed.ok) return parsed.response;
-
-  return jsonOk(getExecutiveMetrics(parsed.data), requestId);
+  return jsonOk(await getRepository().getExecutiveMetrics(parsed.data), requestId);
 }
 
-async function handleFeatureMetrics(request: Request, requestId: string, url: URL): Promise<Response> {
+async function handleFeatureMetrics(
+  request: Request,
+  requestId: string,
+  url: URL,
+): Promise<Response> {
   const auth = authOrError(request, requestId);
   if (auth.response) return auth.response;
-
   const parsed = parseQuery(url, analyticsFiltersSchema, requestId);
   if (!parsed.ok) return parsed.response;
-
-  const data = getFeatureMetrics(parsed.data);
+  const data = await getRepository().getFeatureMetrics(parsed.data);
   return jsonOk({ data, meta: { generatedAt: new Date().toISOString(), requestId } }, requestId);
 }
 
 async function handleQuadrant(request: Request, requestId: string, url: URL): Promise<Response> {
   const auth = authOrError(request, requestId);
   if (auth.response) return auth.response;
-
   const parsed = parseQuery(url, quadrantQuerySchema, requestId);
   if (!parsed.ok) return parsed.response;
-
-  const data = getQuadrant(parsed.data, parsed.data.minVolume, parsed.data.criticalOnly);
+  const data = await getRepository().getQuadrant(
+    parsed.data,
+    parsed.data.minVolume,
+    parsed.data.criticalOnly,
+  );
   return jsonOk(
     {
       data,
       thresholds: { highVolume: 300, highAbsoluteImpact: 4 },
-      meta: { generatedAt: new Date().toISOString(), requestId, modelVersion: "quadrant-analysis-v1" },
+      meta: {
+        generatedAt: new Date().toISOString(),
+        requestId,
+        modelVersion: "quadrant-analysis-v1",
+      },
     },
     requestId,
   );
@@ -111,13 +112,15 @@ async function handleQuadrant(request: Request, requestId: string, url: URL): Pr
 async function handleAbsa(request: Request, requestId: string, url: URL): Promise<Response> {
   const auth = authOrError(request, requestId);
   if (auth.response) return auth.response;
-
   const parsed = parseQuery(url, analyticsFiltersSchema, requestId);
   if (!parsed.ok) return parsed.response;
-
-  const data = getAbsaRows(parsed.data);
+  const data = await getRepository().getAbsaRows(parsed.data);
   return jsonOk(
-    { data, taxonomyVersion: ABSA_CLASSIFIER_VERSION, meta: { generatedAt: new Date().toISOString(), requestId } },
+    {
+      data,
+      taxonomyVersion: ABSA_CLASSIFIER_VERSION,
+      meta: { generatedAt: new Date().toISOString(), requestId },
+    },
     requestId,
   );
 }
@@ -126,11 +129,11 @@ async function handleVerbatims(request: Request, requestId: string, url: URL): P
   const auth = authOrError(request, requestId);
   if (auth.response) return auth.response;
   const session = auth.session!;
-
   const parsed = parseQuery(url, verbatimQuerySchema, requestId);
   if (!parsed.ok) return parsed.response;
 
-  const page = queryVerbatims(parsed.data);
+  const page = await getRepository().queryVerbatims(parsed.data);
+  page.meta.requestId = requestId;
   if (session.role !== "clinical_safety" && session.role !== "administrator") {
     page.data = page.data.map((item) => ({
       ...item,
@@ -145,8 +148,18 @@ async function handleSimulate(request: Request, requestId: string): Promise<Resp
   const auth = authOrError(request, requestId);
   if (auth.response) return auth.response;
 
-  const parsed = await parseBody(request, simulateWorkflowRequestSchema, requestId);
-  if (!parsed.ok) return parsed.response;
+  let json: unknown;
+  try {
+    json = await request.json();
+  } catch {
+    return jsonError(400, "invalid_json", "Request body must be valid JSON.", requestId);
+  }
+  const parsed = simulateWorkflowRequestSchema.safeParse(json);
+  if (!parsed.success) {
+    return jsonError(422, "invalid_body", "Request body failed validation.", requestId, {
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    });
+  }
   const { text, score } = parsed.data;
 
   const result = runPipelineStages(text, score, score >= 9);
@@ -155,7 +168,11 @@ async function handleSimulate(request: Request, requestId: string): Promise<Resp
     redactedText: result.redactedText,
     redactions: result.redactions,
     clinicalGate: result.clinicalGate,
-    analysis: { sentiment: result.sentiment, aspects: result.aspects, classifierVersion: ABSA_CLASSIFIER_VERSION },
+    analysis: {
+      sentiment: result.sentiment,
+      aspects: result.aspects,
+      classifierVersion: ABSA_CLASSIFIER_VERSION,
+    },
     routing: result.routing,
     stages: result.stages,
   };
@@ -163,19 +180,36 @@ async function handleSimulate(request: Request, requestId: string): Promise<Resp
 }
 
 async function handleIngest(request: Request, requestId: string): Promise<Response> {
-  let credential;
+  const rawBody = await request.text();
+
+  let credential: { sourceSystem: string };
   try {
-    credential = requireIngestionCredential(request);
+    credential = verifyIngestionSignature(request, rawBody);
   } catch (err) {
-    if (err instanceof UnauthenticatedError) return jsonError(401, "unauthenticated", err.message, requestId);
+    if (err instanceof UnauthenticatedError)
+      return jsonError(401, "unauthenticated", err.message, requestId);
     throw err;
   }
 
-  const parsed = await parseBody(request, ingestResponseSchema, requestId);
-  if (!parsed.ok) return parsed.response;
-  const body = { ...parsed.data, sourceSystem: parsed.data.sourceSystem ?? credential.sourceSystem };
+  let json: unknown;
+  try {
+    json = JSON.parse(rawBody);
+  } catch {
+    return jsonError(400, "invalid_json", "Request body must be valid JSON.", requestId);
+  }
+  const parsed = ingestResponseSchema.safeParse(json);
+  if (!parsed.success) {
+    return jsonError(422, "invalid_body", "Request body failed validation.", requestId, {
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    });
+  }
+  const body = {
+    ...parsed.data,
+    sourceSystem: parsed.data.sourceSystem ?? credential.sourceSystem,
+  };
 
-  const existing = store.findByExternalId(body.sourceSystem, body.externalResponseId);
+  const repository = getRepository();
+  const existing = await repository.findExistingIngest(body.sourceSystem, body.externalResponseId);
   if (existing) {
     return jsonOk(
       {
@@ -189,12 +223,49 @@ async function handleIngest(request: Request, requestId: string): Promise<Respon
     );
   }
 
-  const result = ingest(body, requestId);
+  const shadowMode = (process.env["INGESTION_MODE"] ?? "live") === "shadow";
+
+  if (shadowMode) {
+    // Shadow mode (Phase 3 rollout step): run the full pipeline, persist nothing, page no one —
+    // for validating production traffic against expected routing before enabling writes.
+    const result = runPipelineStages(body.rawText ?? "", body.score, body.score >= 9);
+    console.log(
+      `[shadow] would route ${body.sourceSystem}/${body.externalResponseId ?? "(no id)"} -> ${result.routing.action}`,
+    );
+    return jsonOk(
+      {
+        responseId: randomUUID(),
+        processingStatus: "routed",
+        statusUrl: null,
+        requestId,
+        shadow: true,
+        wouldRoute: result.routing.action,
+      },
+      requestId,
+      { status: 202 },
+    );
+  }
+
+  const outcome = await repository.ingestResponse(body, requestId);
+
+  if (outcome.routeAction === "p0_clinical_page") {
+    const pageResult = await pageClinicalOnCall({
+      responseId: outcome.responseId,
+      reasonCodes: outcome.safetyReasonCodes,
+      slaSeconds: 15 * 60,
+    });
+    if (!pageResult.delivered) {
+      console.error(
+        `[paging] P0 for response ${outcome.responseId} was NOT delivered (${pageResult.transport}: ${pageResult.detail ?? "unknown"})`,
+      );
+    }
+  }
+
   return jsonOk(
     {
-      responseId: result.responseId,
-      processingStatus: result.processingStatus,
-      statusUrl: `/api/v1/responses/${result.responseId}/status`,
+      responseId: outcome.responseId,
+      processingStatus: outcome.processingStatus,
+      statusUrl: `/api/v1/responses/${outcome.responseId}/status`,
       requestId,
     },
     requestId,
@@ -202,67 +273,80 @@ async function handleIngest(request: Request, requestId: string): Promise<Respon
   );
 }
 
-const ALLOWED_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
-  open: ["contacted", "escalated"],
-  contacted: ["resolved", "escalated"],
-  escalated: ["contacted", "resolved"],
-  resolved: [],
-};
-
-async function handleTicketUpdate(request: Request, requestId: string, ticketId: string): Promise<Response> {
+async function handleTicketUpdate(
+  request: Request,
+  requestId: string,
+  ticketId: string,
+): Promise<Response> {
   const auth = authOrError(request, requestId);
   if (auth.response) return auth.response;
   const session = auth.session!;
   try {
     requireRole(session, ["customer_success", "clinical_safety"]);
   } catch (err) {
-    if (err instanceof UnauthorisedError) return jsonError(403, "unauthorised", err.message, requestId);
+    if (err instanceof UnauthorisedError)
+      return jsonError(403, "unauthorised", err.message, requestId);
     throw err;
   }
 
-  const parsed = await parseBody(request, updateTicketRequestSchema, requestId);
-  if (!parsed.ok) return parsed.response;
-  const { status: newStatus, version, resolutionCode, reason } = parsed.data;
-
-  const ticket = store.ticketById(ticketId);
-  if (!ticket) return jsonError(404, "not_found", `Ticket ${ticketId} was not found.`, requestId);
-  if (ticket.version !== version) {
-    return jsonError(409, "version_conflict", "Ticket has been updated since this version was read.", requestId, {
-      retryable: true,
+  let json: unknown;
+  try {
+    json = await request.json();
+  } catch {
+    return jsonError(400, "invalid_json", "Request body must be valid JSON.", requestId);
+  }
+  const parsed = updateTicketRequestSchema.safeParse(json);
+  if (!parsed.success) {
+    return jsonError(422, "invalid_body", "Request body failed validation.", requestId, {
+      fieldErrors: parsed.error.flatten().fieldErrors,
     });
   }
 
-  const reopeningResolved = ticket.status === "resolved" && newStatus !== "resolved";
-  const allowed = ALLOWED_TRANSITIONS[ticket.status].includes(newStatus);
-  if (!allowed && !(reopeningResolved && session.role === "administrator")) {
-    return jsonError(422, "invalid_transition", `Cannot move ticket from ${ticket.status} to ${newStatus}.`, requestId);
-  }
-  if (reopeningResolved && !reason) {
-    return jsonError(400, "reason_required", "Reopening a resolved ticket requires a reason.", requestId);
-  }
-  if (ticket.ticketType === "p0_clinical" && newStatus === "resolved" && !resolutionCode) {
-    return jsonError(422, "resolution_code_required", "P0 tickets require a resolution code to resolve.", requestId);
-  }
-
-  const oldStatus = ticket.status;
-  ticket.status = newStatus;
-  ticket.version += 1;
-  ticket.updatedAt = new Date().toISOString();
-  if (newStatus === "contacted" && !ticket.firstContactAt) ticket.firstContactAt = ticket.updatedAt;
-  if (newStatus === "resolved") ticket.resolvedAt = ticket.updatedAt;
-  if (resolutionCode) ticket.resolutionCode = resolutionCode;
-  ticket.lastUpdatedBy = session.userId;
-
-  store.appendAudit({
-    responseId: ticket.responseId,
-    stage: "routing",
-    status: "completed",
-    detailCodes: [`ticket_status:${oldStatus}->${newStatus}`],
-    requestId,
+  const result = await getRepository().updateTicket(ticketId, {
+    status: parsed.data.status,
+    version: parsed.data.version,
+    resolutionCode: parsed.data.resolutionCode,
+    reason: parsed.data.reason,
+    actorId: session.userId,
+    allowReopenResolved: session.role === "administrator",
   });
-  store.publish({ type: "ticket.updated", id: ticket.ticketId, occurredAt: ticket.updatedAt, status: ticket.status, version: ticket.version });
 
-  return jsonOk(ticket, requestId);
+  if (!result.ok) {
+    switch (result.reason) {
+      case "not_found":
+        return jsonError(404, "not_found", `Ticket ${ticketId} was not found.`, requestId);
+      case "version_conflict":
+        return jsonError(
+          409,
+          "version_conflict",
+          "Ticket has been updated since this version was read.",
+          requestId,
+          { retryable: true },
+        );
+      case "invalid_transition":
+        return jsonError(
+          422,
+          "invalid_transition",
+          `Cannot move ticket from ${result.from} to ${result.to}.`,
+          requestId,
+        );
+      case "reason_required":
+        return jsonError(
+          400,
+          "reason_required",
+          "Reopening a resolved ticket requires a reason.",
+          requestId,
+        );
+      case "resolution_code_required":
+        return jsonError(
+          422,
+          "resolution_code_required",
+          "P0 tickets require a resolution code to resolve.",
+          requestId,
+        );
+    }
+  }
+  return jsonOk(result.ticket, requestId);
 }
 
 function toSseChunk(event: { type: string } & Record<string, unknown>, id: string): string {
@@ -284,7 +368,7 @@ async function handleRealtimeEvents(request: Request, requestId: string): Promis
         seq += 1;
         controller.enqueue(encoder.encode(toSseChunk(event, String(seq))));
       };
-      unsubscribe = store.subscribe(send);
+      unsubscribe = getRepository().subscribeRealtime(send);
       heartbeat = setInterval(() => controller.enqueue(encoder.encode(": heartbeat\n\n")), 15_000);
     },
     cancel() {
@@ -305,10 +389,8 @@ async function handleRealtimeEvents(request: Request, requestId: string): Promis
 
 const TICKET_PATH = /^\/api\/v1\/tickets\/([^/]+)$/;
 
-/**
- * Returns a Response if the request matches an /api/v1/** route, or null to let the caller
- * (src/server.ts) fall through to the normal SSR handler.
- */
+/** Returns a Response if the request matches an /api/v1/** route, or null to fall through to
+ * the normal SSR handler. */
 export async function handleApiRequest(request: Request): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/v1/")) return null;
@@ -319,17 +401,26 @@ export async function handleApiRequest(request: Request): Promise<Response | nul
   const method = request.method.toUpperCase();
 
   try {
-    if (pathname === "/api/v1/metrics/executive" && method === "GET") return handleExecutiveMetrics(request, requestId, url);
-    if (pathname === "/api/v1/metrics/features" && method === "GET") return handleFeatureMetrics(request, requestId, url);
-    if (pathname === "/api/v1/analysis/quadrant" && method === "GET") return handleQuadrant(request, requestId, url);
-    if (pathname === "/api/v1/analysis/absa" && method === "GET") return handleAbsa(request, requestId, url);
-    if (pathname === "/api/v1/verbatims" && method === "GET") return handleVerbatims(request, requestId, url);
-    if (pathname === "/api/v1/workflow/simulate" && method === "POST") return handleSimulate(request, requestId);
-    if (pathname === "/api/v1/responses/ingest" && method === "POST") return handleIngest(request, requestId);
-    if (pathname === "/api/v1/realtime/events" && method === "GET") return handleRealtimeEvents(request, requestId);
+    if (pathname === "/api/v1/metrics/executive" && method === "GET")
+      return handleExecutiveMetrics(request, requestId, url);
+    if (pathname === "/api/v1/metrics/features" && method === "GET")
+      return handleFeatureMetrics(request, requestId, url);
+    if (pathname === "/api/v1/analysis/quadrant" && method === "GET")
+      return handleQuadrant(request, requestId, url);
+    if (pathname === "/api/v1/analysis/absa" && method === "GET")
+      return handleAbsa(request, requestId, url);
+    if (pathname === "/api/v1/verbatims" && method === "GET")
+      return handleVerbatims(request, requestId, url);
+    if (pathname === "/api/v1/workflow/simulate" && method === "POST")
+      return handleSimulate(request, requestId);
+    if (pathname === "/api/v1/responses/ingest" && method === "POST")
+      return handleIngest(request, requestId);
+    if (pathname === "/api/v1/realtime/events" && method === "GET")
+      return handleRealtimeEvents(request, requestId);
 
     const ticketMatch = pathname.match(TICKET_PATH);
-    if (ticketMatch && method === "PATCH") return handleTicketUpdate(request, requestId, ticketMatch[1]);
+    if (ticketMatch && method === "PATCH")
+      return handleTicketUpdate(request, requestId, ticketMatch[1]!);
 
     return jsonError(404, "not_found", `No route for ${method} ${pathname}.`, requestId);
   } catch (error) {

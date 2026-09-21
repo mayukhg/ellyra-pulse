@@ -3,6 +3,7 @@
  * and the private no-store cache header required for user/permission-dependent responses.
  */
 import { randomUUID } from "node:crypto";
+import type { ZodError } from "zod";
 import type { ApiError } from "./contracts";
 
 export function newRequestId(): string {
@@ -27,14 +28,14 @@ export function jsonError(
   code: string,
   message: string,
   requestId: string,
-  opts?: { fieldErrors?: Record<string, string[]>; retryable?: boolean },
+  opts?: { fieldErrors?: Record<string, string[] | undefined>; retryable?: boolean },
 ): Response {
   const body: ApiError = {
     error: {
       code,
       message,
       requestId,
-      fieldErrors: opts?.fieldErrors,
+      ...(opts?.fieldErrors ? { fieldErrors: opts.fieldErrors } : {}),
       retryable: opts?.retryable ?? false,
     },
   };
@@ -51,7 +52,9 @@ export function jsonError(
 /** Parses query params against a zod schema, returning a typed result or a 400 Response. */
 export function parseQuery<T>(
   url: URL,
-  schema: { safeParse: (input: unknown) => { success: true; data: T } | { success: false; error: any } },
+  schema: {
+    safeParse: (input: unknown) => { success: true; data: T } | { success: false; error: ZodError };
+  },
   requestId: string,
 ): { ok: true; data: T } | { ok: false; response: Response } {
   const raw = Object.fromEntries(url.searchParams.entries());
@@ -59,9 +62,15 @@ export function parseQuery<T>(
   if (!result.success) {
     return {
       ok: false,
-      response: jsonError(400, "invalid_query", "One or more query parameters are invalid.", requestId, {
-        fieldErrors: result.error.flatten?.().fieldErrors,
-      }),
+      response: jsonError(
+        400,
+        "invalid_query",
+        "One or more query parameters are invalid.",
+        requestId,
+        {
+          fieldErrors: result.error.flatten?.().fieldErrors,
+        },
+      ),
     };
   }
   return { ok: true, data: result.data };
@@ -69,14 +78,19 @@ export function parseQuery<T>(
 
 export async function parseBody<T>(
   request: Request,
-  schema: { safeParse: (input: unknown) => { success: true; data: T } | { success: false; error: any } },
+  schema: {
+    safeParse: (input: unknown) => { success: true; data: T } | { success: false; error: ZodError };
+  },
   requestId: string,
 ): Promise<{ ok: true; data: T } | { ok: false; response: Response }> {
   let json: unknown;
   try {
     json = await request.json();
   } catch {
-    return { ok: false, response: jsonError(400, "invalid_json", "Request body must be valid JSON.", requestId) };
+    return {
+      ok: false,
+      response: jsonError(400, "invalid_json", "Request body must be valid JSON.", requestId),
+    };
   }
   const result = schema.safeParse(json);
   if (!result.success) {

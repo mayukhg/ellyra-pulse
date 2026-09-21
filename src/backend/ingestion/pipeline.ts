@@ -44,7 +44,11 @@ export interface PipelineResult {
  * Runs the classify+redact+route stages without touching the store. Safe for the sandbox
  * simulator (§5.6).
  */
-export function runPipelineStages(rawText: string, score: number, reviewEligible: boolean): PipelineResult {
+export function runPipelineStages(
+  rawText: string,
+  score: number,
+  reviewEligible: boolean,
+): PipelineResult {
   const stages: PipelineStageTrace[] = [];
 
   let t0 = performance.now();
@@ -101,7 +105,13 @@ export function ingest(request: IngestResponseRequest, requestId: string) {
   const receivedAt = request.receivedAt ?? new Date().toISOString();
   const feature = request.featureKey ? store.featureByKey(request.featureKey) : undefined;
 
-  store.appendAudit({ responseId, stage: "ingress", status: "completed", detailCodes: [], requestId });
+  store.appendAudit({
+    responseId,
+    stage: "ingress",
+    status: "completed",
+    detailCodes: [],
+    requestId,
+  });
 
   const rawText = request.rawText ?? "";
   const gate = runSafetyGate(rawText);
@@ -114,7 +124,13 @@ export function ingest(request: IngestResponseRequest, requestId: string) {
   });
 
   const { redactedText, redactions, redactionCount } = redact(rawText);
-  store.appendAudit({ responseId, stage: "phi_redaction", status: "completed", detailCodes: [], requestId });
+  store.appendAudit({
+    responseId,
+    stage: "phi_redaction",
+    status: "completed",
+    detailCodes: [],
+    requestId,
+  });
 
   const leakageClean = verifyNoLeakage(redactedText);
   store.appendAudit({
@@ -162,7 +178,13 @@ export function ingest(request: IngestResponseRequest, requestId: string) {
 
   // Classification runs on redacted text only, per §5.7/§9.2.
   const absa = classifyAbsa(redactedText);
-  store.appendAudit({ responseId, stage: "classification", status: "completed", detailCodes: [], requestId });
+  store.appendAudit({
+    responseId,
+    stage: "classification",
+    status: "completed",
+    detailCodes: [],
+    requestId,
+  });
 
   const decision = routeDecision({
     score: request.score,
@@ -226,7 +248,13 @@ export function ingest(request: IngestResponseRequest, requestId: string) {
     });
   }
 
-  store.appendAudit({ responseId, stage: "notification", status: "completed", detailCodes: [], requestId });
+  store.appendAudit({
+    responseId,
+    stage: "notification",
+    status: "completed",
+    detailCodes: [],
+    requestId,
+  });
 
   if (decision.action === "p0_clinical_page") {
     store.publish({

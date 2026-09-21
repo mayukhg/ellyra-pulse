@@ -93,23 +93,44 @@ function nowIso() {
 }
 
 function seedFeatureTouchpoints(): FeatureTouchpoint[] {
-  const names: Record<FeatureKey, { name: string; area: string; type: string; clinical: boolean }> = {
-    lab_blood_parser: { name: "Lab / Blood Report Parser", area: "lab", type: "report", clinical: true },
-    mri_imaging_insights: { name: "MRI / Imaging Insights", area: "imaging", type: "report", clinical: true },
-    symptom_chat_companion: {
-      name: "Symptom Chat Companion",
-      area: "chat",
-      type: "conversation",
-      clinical: true,
-    },
-    gp_question_builder: { name: "GP Question Builder", area: "gp_prep", type: "builder", clinical: false },
-  };
+  const names: Record<FeatureKey, { name: string; area: string; type: string; clinical: boolean }> =
+    {
+      lab_blood_parser: {
+        name: "Lab / Blood Report Parser",
+        area: "lab",
+        type: "report",
+        clinical: true,
+      },
+      mri_imaging_insights: {
+        name: "MRI / Imaging Insights",
+        area: "imaging",
+        type: "report",
+        clinical: true,
+      },
+      symptom_chat_companion: {
+        name: "Symptom Chat Companion",
+        area: "chat",
+        type: "conversation",
+        clinical: true,
+      },
+      gp_question_builder: {
+        name: "GP Question Builder",
+        area: "gp_prep",
+        type: "builder",
+        clinical: false,
+      },
+    };
   return FEATURE_TOUCHPOINTS.map((key) => ({
     featureTouchpointId: key, // stable id == key in this in-memory scaffold
     featureKey: key,
     ...(() => {
       const n = names[key];
-      return { featureName: n.name, productArea: n.area, touchpointType: n.type, isClinical: n.clinical };
+      return {
+        featureName: n.name,
+        productArea: n.area,
+        touchpointType: n.type,
+        isClinical: n.clinical,
+      };
     })(),
   }));
 }
@@ -143,7 +164,11 @@ class InMemoryStore {
     return full;
   }
 
-  createTicket(input: Omit<TicketRow, "ticketId" | "version" | "updatedAt" | "createdAt"> & { createdAt?: string }) {
+  createTicket(
+    input: Omit<TicketRow, "ticketId" | "version" | "updatedAt" | "createdAt"> & {
+      createdAt?: string;
+    },
+  ) {
     const ticket: TicketRow = {
       ...input,
       ticketId: randomUUID(),

@@ -6,10 +6,20 @@
   Port to bind (default 5173).
 .PARAMETER Hostname
   Host/interface to bind (default 127.0.0.1).
+.PARAMETER WithPostgres
+  Use the local Postgres database created by scripts/setup-postgres.sh instead of the
+  in-memory store. Does not start Postgres itself.
+.PARAMETER Shadow
+  Sets INGESTION_MODE=shadow: ingest requests are evaluated but not persisted or paged.
+.NOTES
+  Written to mirror start.sh but not tested on Windows in this environment (no pwsh
+  available) — please verify manually before relying on it.
 #>
 param(
   [int]$Port = 5173,
-  [string]$Hostname = "127.0.0.1"
+  [string]$Hostname = "127.0.0.1",
+  [switch]$WithPostgres,
+  [switch]$Shadow
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,6 +28,7 @@ Set-Location $ScriptDir
 
 $PidFile = Join-Path $ScriptDir ".ellyra-pulse.pid"
 $LogFile = Join-Path $ScriptDir ".ellyra-pulse.log"
+$EnvFile = Join-Path $ScriptDir ".env"
 
 if (Test-Path $PidFile) {
   $existingPid = Get-Content $PidFile -ErrorAction SilentlyContinue
@@ -45,6 +56,41 @@ if (-not (Test-Path (Join-Path $ScriptDir "node_modules"))) {
   } else {
     & npm install
   }
+}
+
+# Generate .env with secrets on first run — src/backend/auth.ts requires these to be set, or
+# every request fails with a 500. See .env.example for the full list of options.
+if (-not (Test-Path $EnvFile)) {
+  Write-Host "No .env found — generating one with fresh secrets (see .env.example for what else you can set)."
+  $authSecret = node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  $ingestSecret = node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  @("AUTH_JWT_SECRET=$authSecret", "INGEST_HMAC_SECRET=$ingestSecret") | Set-Content -Path $EnvFile -Encoding ascii
+}
+
+Get-Content $EnvFile | ForEach-Object {
+  if ($_ -match '^\s*([^#=]+)=(.*)$') {
+    [System.Environment]::SetEnvironmentVariable($matches[1].Trim(), $matches[2].Trim(), "Process")
+  }
+}
+
+if ($WithPostgres) {
+  if (-not $env:DATABASE_URL) {
+    $env:DATABASE_URL = "postgres://ellyra:ellyra_dev_pw@127.0.0.1:5432/ellyra_pulse"
+  }
+  $checkResult = & psql $env:DATABASE_URL -c "SELECT 1" 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    Write-Error "Could not connect to $($env:DATABASE_URL). Run scripts/setup-postgres.sh first (and check Postgres is running)."
+    exit 1
+  }
+  Write-Host "Using Postgres at $($env:DATABASE_URL)"
+} else {
+  Remove-Item Env:\DATABASE_URL -ErrorAction SilentlyContinue
+  Write-Host "Using the in-memory store (pass -WithPostgres to use a real database instead)."
+}
+
+if ($Shadow) {
+  $env:INGESTION_MODE = "shadow"
+  Write-Host "INGESTION_MODE=shadow -- ingest requests will be evaluated but not persisted or paged."
 }
 
 Write-Host "Starting Ellyra Pulse on http://${Hostname}:${Port} ..."
@@ -77,4 +123,5 @@ for ($i = 0; $i -lt 30; $i++) {
 
 Write-Host "Ellyra Pulse is running (PID $($proc.Id)). Logs: $LogFile"
 Write-Host "Open: http://${Hostname}:${Port}"
+Write-Host "Mint a dev API token with: `$env:AUTH_JWT_SECRET='...'; node scripts/mint-dev-token.mjs"
 Write-Host "Stop with: .\stop.ps1"

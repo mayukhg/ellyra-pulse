@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Starts the Ellyra Pulse app (frontend + backend API, single TanStack Start process).
-# Usage: ./start.sh [--port 5173] [--host 127.0.0.1]
+# Usage: ./start.sh [--port 5173] [--host 127.0.0.1] [--with-postgres] [--shadow]
+#
+# On first run, generates .env with AUTH_JWT_SECRET/INGEST_HMAC_SECRET if missing (see
+# .env.example). Without --with-postgres, the backend uses the in-memory store seeded from
+# data/synthetic/. --with-postgres points it at the local dev database created by
+# scripts/setup-postgres.sh (run that first) — it does not start Postgres itself.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,11 +15,16 @@ PORT="${PORT:-5173}"
 HOST="${HOST:-127.0.0.1}"
 PID_FILE=".ellyra-pulse.pid"
 LOG_FILE=".ellyra-pulse.log"
+ENV_FILE=".env"
+WITH_POSTGRES=false
+SHADOW_MODE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --port) PORT="$2"; shift 2 ;;
     --host) HOST="$2"; shift 2 ;;
+    --with-postgres) WITH_POSTGRES=true; shift ;;
+    --shadow) SHADOW_MODE=true; shift ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -44,6 +54,39 @@ if [[ ! -d "node_modules" ]]; then
   fi
 fi
 
+# Generate .env with secrets on first run — auth.ts/verifyIngestionSignature require these to be
+# set, or every request fails with a 500. See .env.example for the full list of options.
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "No .env found — generating one with fresh secrets (see .env.example for what else you can set)."
+  {
+    echo "AUTH_JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
+    echo "INGEST_HMAC_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
+  } > "$ENV_FILE"
+fi
+
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+
+if [[ "$WITH_POSTGRES" == true ]]; then
+  export DATABASE_URL="${DATABASE_URL:-postgres://ellyra:ellyra_dev_pw@127.0.0.1:5432/ellyra_pulse}"
+  if ! psql "$DATABASE_URL" -c "SELECT 1" >/dev/null 2>&1; then
+    echo "Could not connect to $DATABASE_URL." >&2
+    echo "Run scripts/setup-postgres.sh first (and check Postgres is running)." >&2
+    exit 1
+  fi
+  echo "Using Postgres at $DATABASE_URL"
+else
+  unset DATABASE_URL
+  echo "Using the in-memory store (pass --with-postgres to use a real database instead)."
+fi
+
+if [[ "$SHADOW_MODE" == true ]]; then
+  export INGESTION_MODE=shadow
+  echo "INGESTION_MODE=shadow — ingest requests will be evaluated but not persisted or paged."
+fi
+
 echo "Starting Ellyra Pulse on http://$HOST:$PORT ..."
 if [[ "$PKG_RUNNER" == "bun" ]]; then
   nohup bun run dev --host "$HOST" --port "$PORT" > "$LOG_FILE" 2>&1 &
@@ -69,4 +112,5 @@ done
 
 echo "Ellyra Pulse is running (PID $APP_PID). Logs: $LOG_FILE"
 echo "Open: http://$HOST:$PORT"
+echo "Mint a dev API token with: AUTH_JWT_SECRET=... node scripts/mint-dev-token.mjs"
 echo "Stop with: ./stop.sh"

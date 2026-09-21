@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ellyra
+          POSTGRES_PASSWORD: ellyra_dev_pw
+          POSTGRES_DB: ellyra_pulse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ellyra"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Apply database migration
+        run: PGPASSWORD=ellyra_dev_pw psql -h 127.0.0.1 -U ellyra -d ellyra_pulse --set ON_ERROR_STOP=1 -f db/migrations/0001_init.sql
+        env:
+          PGPASSWORD: ellyra_dev_pw
+
+      - name: Run tests against the in-memory repository
+        run: bun run test
+
+      - name: Run tests against the real Postgres repository
+        run: bun run test
+        env:
+          DATABASE_URL: postgres://ellyra:ellyra_dev_pw@127.0.0.1:5432/ellyra_pulse
+
+      - name: Type-check
+        run: bunx tsc --noEmit
+
+      # Scoped to the backend: the pre-existing Lovable-generated frontend (src/routes,
+      # src/components) has ~390 pre-existing Prettier formatting violations unrelated to this
+      # work. Fixing those is a separate, much larger frontend cleanup — not blocking backend CI
+      # on it. `bun run lint` (unscoped) can be run manually to see the full picture.
+      - name: Lint (backend)
+        run: bunx eslint src/backend

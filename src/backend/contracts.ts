@@ -269,7 +269,7 @@ export interface ApiError {
     code: string;
     message: string;
     requestId: string;
-    fieldErrors?: Record<string, string[]>;
+    fieldErrors?: Record<string, string[] | undefined>;
     retryable: boolean;
   };
 }
@@ -281,7 +281,13 @@ export interface ApiError {
 export type RealtimeEvent =
   | { type: "response.processed"; id: string; occurredAt: IsoDateTime; affectedFeature: string }
   | { type: "safety.p0_created"; id: string; occurredAt: IsoDateTime; reasonCodes: string[] }
-  | { type: "ticket.updated"; id: string; occurredAt: IsoDateTime; status: TicketStatus; version: number }
+  | {
+      type: "ticket.updated";
+      id: string;
+      occurredAt: IsoDateTime;
+      status: TicketStatus;
+      version: number;
+    }
   | {
       type: "metrics.invalidated";
       occurredAt: IsoDateTime;

@@ -32,24 +32,31 @@ const RULES: Array<{ code: SafetyReasonCode; pattern: RegExp }> = [
   },
   {
     code: "urgent_symptom_minimisation",
-    pattern: /\btold me (it'?s|it was) (nothing|fine|not serious).{0,40}(but|however).{0,40}(worse|pain|blood|fever)\b/i,
+    pattern:
+      /\btold me (it'?s|it was) (nothing|fine|not serious).{0,40}(but|however).{0,40}(worse|pain|blood|fever)\b/i,
   },
   {
     code: "false_reassurance",
-    pattern: /\b(said (i was|it was) fine|reassured me).{0,60}(doctor|gp|hospital) (said|found|diagnosed)\b/i,
+    pattern:
+      /\b(said (i was|it was) fine|reassured me).{0,60}(doctor|gp|hospital) (said|found|diagnosed)\b/i,
   },
   {
     code: "contradicts_clinician",
-    pattern: /\b(disagreed with|contradicted|different from) (my |the )?(doctor|gp|radiologist|clinician)\b/i,
+    // Allows natural phrasing between the trigger verb and the clinician reference, e.g.
+    // "contradicted what my radiologist told me" as well as "contradicted my doctor".
+    pattern:
+      /\b(disagreed with|contradicted|is different from).{0,25}\b(my|the) (doctor|gp|radiologist|clinician)\b/i,
   },
   {
     code: "missed_abnormal_marker",
-    pattern: /\b(missed|didn'?t (flag|catch)|failed to (flag|catch)).{0,30}(abnormal|marker|result)\b/i,
+    pattern:
+      /\b(missed|didn'?t (flag|catch)|failed to (flag|catch)).{0,30}(abnormal|marker|result)\b/i,
   },
   {
     code: "ocr_unit_mismatch",
     // e.g. "4.7 mg/dL" vs "47 mmol/L" style unit/decimal confusion call-outs
-    pattern: /\b(wrong unit|misread|decimal (point|place)|mg\/dl.{0,20}mmol\/l|mmol\/l.{0,20}mg\/dl)\b/i,
+    pattern:
+      /\b(wrong unit|misread|decimal (point|place)|mg\/dl.{0,20}mmol\/l|mmol\/l.{0,20}mg\/dl)\b/i,
   },
 ];
 
