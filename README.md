@@ -219,3 +219,8 @@ curl -H "Authorization: Bearer $TOKEN" \
 This should return live metrics computed from the 8,000-row synthetic dataset (auto-loaded into
 the in-memory store on first API request, or seeded into Postgres yourself — see
 `data/synthetic/README.md`).
+
+**Using the dashboard UI once it's running:** see [`docs/HOW_TO_USE.md`](docs/HOW_TO_USE.md) for
+a walkthrough of all four workflows (executive scorecard, root-cause drill-down, verbatim
+review/closed-loop actions, and the sandbox simulator), each with a diagram and click-by-click
+steps.
