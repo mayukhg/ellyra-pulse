@@ -76,15 +76,17 @@ app with mock data (`src/lib/nps-data.ts`) rendering the executive scorecard, fe
 table, root-cause quadrant, ABSA explorer, verbatim/closed-loop hub, and a workflow simulator.
 Not yet wired to the backend below.
 
-**Backend scaffold** (`src/server/`, `src/routes/api/v1/`):
+**Backend scaffold** (`src/backend/`):
 - `contracts.ts`: shared TypeScript types and zod validation schemas for every request/response.
 - `ingestion/`: redaction (deterministic pattern matching + leakage scan), the clinical safety
   gate, an ABSA classifier, and the routing engine — each a standalone, testable module.
 - `pipeline.ts`: orchestrates those stages in the required order for both the sandbox simulator
   and production ingestion.
-- All 8 endpoints from the integration spec (executive/feature metrics, quadrant, ABSA,
-  verbatims, workflow simulate, response ingest, ticket update) plus an SSE realtime stream, as
-  TanStack Start server routes.
+- `router.ts`: all 8 endpoints from the integration spec (executive/feature metrics, quadrant,
+  ABSA, verbatims, workflow simulate, response ingest, ticket update) plus an SSE realtime
+  stream, as a manual dispatcher wired into `src/server.ts` — the installed TanStack Start
+  version (1.168.32) has no file-based "server routes" API, so this isn't done via
+  `src/routes/api/**` files. Verified working end to end with a real `bun run dev` + `curl` pass.
 - `store.ts`: an **in-memory store standing in for Postgres** — the route handlers and
   aggregation queries are written against the same shape the real schema provides, but nothing
   persists across a process restart yet.
@@ -99,13 +101,13 @@ and matching audit events, shaped exactly like the canonical schema, for local d
 demos. See `data/synthetic/README.md`.
 
 **Not yet built:** real authentication (currently a header-trusting stub in
-`src/server/auth.ts`), a real medical NER pass for name/address redaction (currently deterministic
+`src/backend/auth.ts`), a real medical NER pass for name/address redaction (currently deterministic
 patterns only), the frontend's connection to the new backend endpoints (still reading mock data),
 and everything in Phases 2–4 above.
 
 ## Future roadmap (next concrete steps)
 
-1. Provision Postgres, run `db/migrations/0001_init.sql`, and replace `src/server/store.ts` with
+1. Provision Postgres, run `db/migrations/0001_init.sql`, and replace `src/backend/store.ts` with
    real repository modules — the route handlers' call shape shouldn't need to change.
 2. Replace the auth stub with the real workforce identity provider and enforce tenant scoping on
    every query.

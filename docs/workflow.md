@@ -2,7 +2,7 @@
 
 How a single user interaction becomes a routed, auditable NPS/sentiment record — from the
 moment a user finishes a session in the Ellyra app to the ticket or in-app action that follows.
-This is the same pipeline implemented in `src/server/ingestion/` and specified in
+This is the same pipeline implemented in `src/backend/ingestion/` and specified in
 `docs/DESIGN.md` §3–§4 and `docs/DESIGN_UI.md` §9–§10.
 
 ```mermaid
@@ -64,16 +64,16 @@ flowchart LR
    ingestion step directly, bypassing the trigger stages above.
 
 5. **PHI redaction.** Deterministic pattern redaction runs before the text touches any
-   analytics store or model call (`src/server/ingestion/redaction.ts`), followed by a leakage
+   analytics store or model call (`src/backend/ingestion/redaction.ts`), followed by a leakage
    verification pass. A record that fails leakage verification is quarantined here and never
    reaches classification.
 
 6. **Enrichment.** Sentiment scoring and ABSA tagging (`clinical_trust`,
    `tone_and_bedside_manner`, `document_parsing_ocr`, `actionability`, plus operational aspects)
-   run on the redacted text only (`src/server/ingestion/absa.ts`).
+   run on the redacted text only (`src/backend/ingestion/absa.ts`).
 
 7. **Routing engine.** Deterministic rules, safety evaluated ahead of NPS tier
-   (`src/server/ingestion/routing.ts`):
+   (`src/backend/ingestion/routing.ts`):
    - **0–6 (detractor)** → CS ticket, 24h SLA (15 min if safety-flagged).
    - **7–8 (passive)** → in-session micro-poll, no ticket created.
    - **9–10 (promoter)** → review-request prompt, subject to eligibility checks.
