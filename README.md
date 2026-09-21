@@ -1,6 +1,7 @@
 # Ellyra Pulse
 
-Customer NPS Tracker & Sentiment Intelligence Platform for [Ellyra Health](https://ellyra.health/).
+NPS and sentiment intelligence for [Ellyra Health](https://ellyra.health/)'s medical AI
+companion — safety-gated feedback routing, PHI-safe redaction, and a clinical-trust dashboard.
 
 ---
 
@@ -122,23 +123,46 @@ and everything in Phases 2–4 above.
 
 ---
 
-## Build with Lovable
+## How to bring up the app
 
-This project was built with [Lovable](https://lovable.dev). Continue developing the prototype UI
-in the [Lovable editor](https://lovable.dev/projects/16327ac0-e281-42d9-8416-3ae3b09541c7).
+The frontend and backend API run as a single TanStack Start process (`bun run dev` / `npm run
+dev` under the hood) — there's no separate server to start.
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into
-  Lovable, ready for your next prompt.
+**Prerequisites:** [Node.js](https://nodejs.org) 18+ (npm comes with it). [Bun](https://bun.sh)
+is optional but used automatically if present (`bun.lock` is checked in) — it installs faster.
 
-## Development
+**Quick start (recommended):**
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+| Platform | Start | Stop |
+|---|---|---|
+| macOS / Linux | [`./start.sh`](start.sh) | [`./stop.sh`](stop.sh) |
+| Windows (PowerShell) | [`./start.ps1`](start.ps1) | [`./stop.ps1`](stop.ps1) |
 
 ```sh
 git clone https://github.com/mayukhg/ellyra-pulse
 cd ellyra-pulse
-npm i
-npm run dev
+./start.sh          # installs dependencies on first run, then starts the app
 ```
+
+Then open **http://127.0.0.1:5173**. The script writes a PID file (`.ellyra-pulse.pid`) and logs
+(`.ellyra-pulse.log`) so `./stop.sh` can find and stop the right process; it also detects if the
+app is already running and won't start a second copy. Override the host/port with
+`./start.sh --host 0.0.0.0 --port 3000` if needed.
+
+**Manual start**, if you'd rather not use the scripts:
+
+```sh
+npm i          # or: bun install
+npm run dev    # or: bun run dev
+```
+
+**Verifying the backend is up**, once the app is running:
+
+```sh
+curl -H "x-workforce-role: administrator" -H "x-workforce-user-id: u1" -H "x-workforce-tenant-id: t1" \
+  "http://127.0.0.1:5173/api/v1/metrics/executive?from=2026-03-01&to=2026-09-21"
+```
+
+This should return live metrics computed from the 8,000-row synthetic dataset in
+`data/synthetic/` (loaded into the in-memory store on first API request — see
+`src/backend/fixtures.ts`).
