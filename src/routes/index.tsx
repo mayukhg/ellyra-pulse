@@ -13,6 +13,7 @@ import { Simulator } from "@/components/nps/Simulator";
 import { Chip } from "@/components/nps/shared";
 import type { Aspect, Feature, QuadrantPoint } from "@/lib/nps-data";
 import { trackHotjarEvent } from "@/lib/hotjar";
+import { trackMixpanelEvent } from "@/lib/mixpanel";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -43,20 +44,34 @@ function Index() {
   const [tab, setTabState] = useState("scorecard");
 
   const setFeature = (f: Feature | null) => {
-    if (f) trackHotjarEvent("filter_applied");
+    if (f) {
+      trackHotjarEvent("filter_applied");
+      trackMixpanelEvent("filter_applied", { feature: f });
+    }
     setFeatureState(f);
   };
   const setAspect = (a: Aspect | null) => {
-    if (a) trackHotjarEvent("filter_applied");
+    if (a) {
+      trackHotjarEvent("filter_applied");
+      trackMixpanelEvent("filter_applied", { aspect: a });
+    }
     setAspectState(a);
   };
   const setTab = (t: string) => {
     trackHotjarEvent(`dashboard_tab_${t}_viewed`);
+    trackMixpanelEvent("dashboard_tab_viewed", { tab: t });
     setTabState(t);
   };
 
   const selectTheme = (p: QuadrantPoint | null) => {
-    if (p) trackHotjarEvent("filter_applied");
+    if (p) {
+      trackHotjarEvent("filter_applied");
+      trackMixpanelEvent("filter_applied", {
+        theme: p.theme,
+        feature: p.feature,
+        aspect: p.aspect,
+      });
+    }
     setTheme(p);
     if (p) setTab("verbatims");
   };

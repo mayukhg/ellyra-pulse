@@ -14,6 +14,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { trackHotjarEvent } from "@/lib/hotjar";
+import { trackMixpanelEvent } from "@/lib/mixpanel";
 import { Chip, SectionHeading } from "./shared";
 
 const SAMPLES = [
@@ -145,6 +146,7 @@ export function Simulator() {
   const run = () => {
     if (!input.trim()) return;
     trackHotjarEvent("simulator_pipeline_run");
+    trackMixpanelEvent("simulator_pipeline_run");
     setResult(classify(input));
     setStep(0);
   };

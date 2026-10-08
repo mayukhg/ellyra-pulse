@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { trackHotjarEvent } from "../lib/hotjar";
+import { trackMixpanelEvent } from "../lib/mixpanel";
 import { HotjarProvider } from "../components/analytics/HotjarProvider";
 
 function NotFoundComponent() {
@@ -42,6 +43,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
     trackHotjarEvent("error_boundary_tripped");
+    trackMixpanelEvent("error_boundary_tripped");
   }, [error]);
 
   return (

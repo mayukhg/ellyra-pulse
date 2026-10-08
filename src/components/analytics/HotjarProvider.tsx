@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { initHotjar, trackHotjarStateChange } from "@/lib/hotjar";
+import { initMixpanel, trackMixpanelEvent } from "@/lib/mixpanel";
 
 // Inlined (not imported from lib/hotjar) so the bundler constant-folds it and drops the
 // harness chunk entirely from production builds.
@@ -25,6 +26,7 @@ export function HotjarProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     initHotjar();
+    initMixpanel();
     if (HotjarTestHarness) setShowHarness(shouldShowHarness());
   }, []);
 
@@ -32,6 +34,9 @@ export function HotjarProvider({ children }: { children: ReactNode }) {
     // Hotjar records the initial page itself; only report subsequent client-side navigations.
     if (lastPath.current !== null && lastPath.current !== pathname) {
       trackHotjarStateChange(pathname);
+    }
+    if (lastPath.current !== pathname) {
+      trackMixpanelEvent("page_viewed", { path: pathname });
     }
     lastPath.current = pathname;
   }, [pathname]);

@@ -12,4 +12,9 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  vite: {
+    // This app is Vite, not Next.js. Keep NEXT_PUBLIC_* visible because the Mixpanel
+    // project token is supplied under that name, and continue exposing VITE_*.
+    envPrefix: ["VITE_", "NEXT_PUBLIC_"],
+  },
 });
