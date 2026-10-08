@@ -32,12 +32,15 @@ fi
 $PSQL_SUPERUSER_CMD -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;"
 $PSQL_SUPERUSER_CMD -d "$DB_NAME" -c "GRANT ALL ON SCHEMA public TO $DB_USER;"
 
-echo "Applying db/migrations/0001_init.sql (safe to re-run only on a fresh database)..."
+echo "Applying db/migrations/0001_init.sql and 0002_synthetic_metrics.sql (safe to re-run only on a fresh database)..."
 PGPASSWORD="$DB_PASSWORD" psql -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" \
   --set ON_ERROR_STOP=1 -f "$REPO_ROOT/db/migrations/0001_init.sql"
+PGPASSWORD="$DB_PASSWORD" psql -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" \
+  --set ON_ERROR_STOP=1 -f "$REPO_ROOT/db/migrations/0002_synthetic_metrics.sql"
 
 echo ""
 echo "Done. Set this before starting the app (or pass --with-postgres to start.sh):"
 echo "  DATABASE_URL=postgres://$DB_USER:$DB_PASSWORD@127.0.0.1:5432/$DB_NAME"
 echo ""
-echo "To load the synthetic dataset into it: node scripts/seed-postgres.mjs"
+echo "To load the synthetic dataset into it:"
+echo "  bun scripts/generate-synthetic-data.mjs && bun scripts/seed-postgres.mjs"

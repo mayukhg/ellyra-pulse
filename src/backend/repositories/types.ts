@@ -21,7 +21,7 @@ import type {
 
 export interface TicketSnapshot {
   ticketId: string;
-  responseId: string;
+  responseId: string | null;
   ticketType: "p0_clinical" | "customer_success";
   status: TicketStatus;
   priority: "p0" | "p1" | "standard";

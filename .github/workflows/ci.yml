@@ -33,14 +33,20 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Apply database migration
-        run: PGPASSWORD=ellyra_dev_pw psql -h 127.0.0.1 -U ellyra -d ellyra_pulse --set ON_ERROR_STOP=1 -f db/migrations/0001_init.sql
+      - name: Apply database migrations
+        run: |
+          PGPASSWORD=ellyra_dev_pw psql -h 127.0.0.1 -U ellyra -d ellyra_pulse --set ON_ERROR_STOP=1 -f db/migrations/0001_init.sql
+          PGPASSWORD=ellyra_dev_pw psql -h 127.0.0.1 -U ellyra -d ellyra_pulse --set ON_ERROR_STOP=1 -f db/migrations/0002_synthetic_metrics.sql
         env:
           PGPASSWORD: ellyra_dev_pw
 
       # The Postgres suite asserts executive metrics are non-zero
-      # (router.integration.postgres.test.ts). The migration only seeds dimensions, so load the
-      # synthetic dataset before those tests run.
+      # (router.integration.postgres.test.ts). Generate the quota corpus, check it, then load it.
+      - name: Generate and verify synthetic data
+        run: |
+          bun scripts/generate-synthetic-data.mjs
+          bun scripts/verify-synthetic-quotas.ts
+
       - name: Seed the synthetic dataset
         run: bun scripts/seed-postgres.mjs
         env:

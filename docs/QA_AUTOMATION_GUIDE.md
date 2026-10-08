@@ -21,7 +21,7 @@ tests should weight accordingly:
 ## How to bring the app up for testing
 
 ```sh
-./start.sh                    # in-memory store, seeded from data/synthetic/ (8,000 rows)
+./start.sh                    # in-memory store, seeded from the quota corpus in src/backend/synthetic/
 ./start.sh --with-postgres    # real Postgres — run scripts/setup-postgres.sh first
 ./start.sh --shadow           # ingestion evaluates but never persists or pages
 ```

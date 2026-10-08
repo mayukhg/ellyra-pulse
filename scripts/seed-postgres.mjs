@@ -1,115 +1,249 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
- * Loads data/synthetic/*.json into a real Postgres database (schema from
- * db/migrations/0001_init.sql). Requires DATABASE_URL. Run scripts/setup-postgres.sh first.
+ * Loads data/synthetic/generated/*.jsonl into Postgres.
+ * Apply db/migrations/0001_init.sql and 0002_synthetic_metrics.sql first, then:
  *
- * Usage: DATABASE_URL=postgres://... node scripts/seed-postgres.mjs
+ *   bun scripts/generate-synthetic-data.mjs
+ *   DATABASE_URL=postgres://... bun scripts/seed-postgres.mjs
  */
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import pg from "pg";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, "..", "data", "synthetic");
+const dataDir = path.join(__dirname, "..", "data", "synthetic", "generated");
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
-  console.error("DATABASE_URL is not set. Run scripts/setup-postgres.sh first, then export DATABASE_URL.");
+  console.error("DATABASE_URL is not set.");
+  process.exit(1);
+}
+if (!existsSync(path.join(dataDir, "nps_responses.jsonl"))) {
+  console.error("Missing generated corpus. Run: bun scripts/generate-synthetic-data.mjs");
   process.exit(1);
 }
 
-function readJson(file) {
-  return JSON.parse(readFileSync(path.join(DATA_DIR, file), "utf8"));
+function readJsonl(file) {
+  const text = readFileSync(path.join(dataDir, file), "utf8").trim();
+  if (!text) return [];
+  return text.split("\n").map((line) => JSON.parse(line));
 }
 
-function chunk(arr, size) {
+function chunk(rows, size) {
   const out = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  for (let index = 0; index < rows.length; index += size) out.push(rows.slice(index, index + size));
   return out;
+}
+
+async function insertRows(client, table, columns, rows, casts = {}) {
+  if (rows.length === 0) return;
+  for (const batch of chunk(rows, 200)) {
+    const params = [];
+    const tuples = batch.map((row, rowIndex) => {
+      const placeholders = columns.map((column, columnIndex) => {
+        params.push(row[column]);
+        const cast = casts[column];
+        const ref = `$${rowIndex * columns.length + columnIndex + 1}`;
+        return cast ? `${ref}::${cast}` : ref;
+      });
+      return `(${placeholders.join(",")})`;
+    });
+    await client.query(
+      `INSERT INTO ${table} (${columns.join(",")}) VALUES ${tuples.join(",")} ON CONFLICT DO NOTHING`,
+      params,
+    );
+  }
 }
 
 async function main() {
   const pool = new pg.Pool({ connectionString: databaseUrl });
-
-  const { rows: featureRows } = await pool.query("SELECT feature_touchpoint_id, feature_key FROM dim_feature_touchpoint");
-  const featureIdByKey = new Map(featureRows.map((r) => [r.feature_key, r.feature_touchpoint_id]));
-  if (featureIdByKey.size === 0) {
-    console.error("dim_feature_touchpoint is empty — run the migration (db/migrations/0001_init.sql) first.");
-    process.exit(1);
-  }
-
-  const cohorts = readJson("dim_user_cohort.json");
-  console.log(`Seeding ${cohorts.length} user cohorts...`);
-  for (const c of cohorts) {
-    await pool.query(
-      `INSERT INTO dim_user_cohort (user_cohort_id, cohort_key, cohort_name, plan_type, tenure_band, is_active)
-       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (cohort_key) DO NOTHING`,
-      [c.userCohortId, c.cohortKey, c.cohortName, c.planType ?? null, c.tenureBand ?? null, c.isActive ?? true],
+  const client = await pool.connect();
+  try {
+    const { rows: featureRows } = await client.query(
+      "SELECT feature_touchpoint_id, feature_key FROM dim_feature_touchpoint",
     );
-  }
-
-  const responses = readJson("fact_nps_response.json");
-  console.log(`Seeding ${responses.length} NPS responses...`);
-  let inserted = 0;
-  for (const batch of chunk(responses, 500)) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      for (const r of batch) {
-        const featureId = featureIdByKey.get(r.feature_key) ?? null;
-        await client.query(
-          `INSERT INTO fact_nps_response
-             (response_id, external_response_id, source_system, received_at, survey_type, nps_score, nps_tier,
-              feature_touchpoint_id, user_cohort_id, session_ref, channel, locale, response_eligible,
-              verbatim_redacted, redaction_tags, redaction_count, redaction_version, sentiment_score, aspects,
-              safety_flag, safety_reason_codes, safety_confidence, route_action, model_version,
-              classifier_version, processing_status, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
-           ON CONFLICT (response_id) DO NOTHING`,
-          [
-            r.response_id, r.external_response_id, r.source_system, r.received_at, r.survey_type, r.nps_score, r.nps_tier,
-            featureId, r.user_cohort_id, r.session_ref, r.channel, r.locale, r.response_eligible,
-            r.verbatim_redacted, r.redaction_tags, r.redaction_count, r.redaction_version, r.sentiment_score,
-            JSON.stringify(r.aspects), r.safety_flag, r.safety_reason_codes, r.safety_confidence, r.route_action,
-            r.model_version, r.classifier_version, r.processing_status, r.created_at,
-          ],
-        );
-      }
-      await client.query("COMMIT");
-      inserted += batch.length;
-      process.stdout.write(`\r  ${inserted}/${responses.length}`);
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
+    const featureIdByKey = new Map(featureRows.map((row) => [row.feature_key, row.feature_touchpoint_id]));
+    if (featureIdByKey.size === 0) {
+      throw new Error("dim_feature_touchpoint is empty — apply db/migrations/0001_init.sql first.");
     }
-  }
-  console.log();
 
-  const tickets = readJson("fact_closed_loop_ticket.json");
-  console.log(`Seeding ${tickets.length} tickets...`);
-  for (const t of tickets) {
-    await pool.query(
-      `INSERT INTO fact_closed_loop_ticket
-         (ticket_id, response_id, ticket_type, status, priority, owner_team, owner_id, created_at,
-          first_contact_at, resolved_at, sla_due_at, sla_breached_at, resolution_code, last_updated_by, version, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-       ON CONFLICT (ticket_id) DO NOTHING`,
-      [
-        t.ticket_id, t.response_id, t.ticket_type, t.status, t.priority, t.owner_team, t.owner_id, t.created_at,
-        t.first_contact_at, t.resolved_at, t.sla_due_at, t.sla_breached_at, t.resolution_code, t.last_updated_by,
-        t.version, t.updated_at,
-      ],
+    await client.query("BEGIN");
+
+    const cohorts = readJsonl("cohorts.jsonl");
+    console.log(`Seeding ${cohorts.length} cohorts...`);
+    await insertRows(
+      client,
+      "dim_user_cohort",
+      ["user_cohort_id", "cohort_key", "cohort_name", "plan_type", "tenure_band", "is_active"],
+      cohorts,
     );
-  }
 
-  console.log("Done.");
-  await pool.end();
+    const sessions = readJsonl("clinical_sessions.jsonl");
+    console.log(`Seeding ${sessions.length} clinical sessions...`);
+    await insertRows(
+      client,
+      "fact_clinical_session",
+      [
+        "session_id",
+        "started_at",
+        "feature_key",
+        "user_cohort_id",
+        "eligible_clinical",
+        "mismatch_codes",
+        "harm_codes",
+      ],
+      sessions,
+      { mismatch_codes: "text[]", harm_codes: "text[]" },
+    );
+
+    const invitations = readJsonl("survey_invitations.jsonl");
+    console.log(`Seeding ${invitations.length} survey invitations...`);
+    await insertRows(
+      client,
+      "fact_survey_invitation",
+      ["invitation_id", "session_id", "delivered_at", "eligible", "feature_key"],
+      invitations,
+    );
+
+    const responses = readJsonl("nps_responses.jsonl").map((row) => ({
+      ...row,
+      feature_touchpoint_id: featureIdByKey.get(row.feature_key) ?? null,
+      aspects: JSON.stringify(row.aspects),
+    }));
+    console.log(`Seeding ${responses.length} NPS responses...`);
+    await insertRows(
+      client,
+      "fact_nps_response",
+      [
+        "response_id",
+        "external_response_id",
+        "source_system",
+        "received_at",
+        "survey_type",
+        "nps_score",
+        "nps_tier",
+        "feature_touchpoint_id",
+        "user_cohort_id",
+        "session_ref",
+        "channel",
+        "locale",
+        "response_eligible",
+        "verbatim_redacted",
+        "redaction_tags",
+        "redaction_count",
+        "redaction_version",
+        "sentiment_score",
+        "aspects",
+        "safety_flag",
+        "safety_reason_codes",
+        "safety_confidence",
+        "route_action",
+        "model_version",
+        "classifier_version",
+        "processing_status",
+        "created_at",
+        "invitation_id",
+        "session_id",
+        "anxiety_pre",
+        "anxiety_post",
+        "anxiety_pair_valid",
+        "comprehension_applicable",
+        "understood_without_search",
+        "disclaimer_exposed",
+        "disclaimer_polarity",
+      ],
+      responses,
+      { redaction_tags: "text[]", aspects: "jsonb", safety_reason_codes: "text[]" },
+    );
+
+    const tickets = readJsonl("closed_loop_tickets.jsonl");
+    console.log(`Seeding ${tickets.length} tickets...`);
+    await insertRows(
+      client,
+      "fact_closed_loop_ticket",
+      [
+        "ticket_id",
+        "response_id",
+        "session_id",
+        "ticket_type",
+        "status",
+        "priority",
+        "owner_team",
+        "owner_id",
+        "created_at",
+        "first_contact_at",
+        "resolved_at",
+        "sla_due_at",
+        "sla_breached_at",
+        "resolution_code",
+        "last_updated_by",
+        "version",
+        "updated_at",
+      ],
+      tickets,
+    );
+
+    const pages = readJsonl("page_events.jsonl");
+    console.log(`Seeding ${pages.length} page events...`);
+    await insertRows(
+      client,
+      "fact_page_event",
+      ["page_event_id", "ticket_id", "delivered", "sent_at", "acknowledged_at", "detail_code"],
+      pages,
+    );
+
+    const audits = readJsonl("processing_audit.jsonl");
+    console.log(`Seeding ${audits.length} audit events...`);
+    await insertRows(
+      client,
+      "response_processing_audit",
+      ["audit_id", "response_id", "stage", "status", "detail_codes", "occurred_at", "request_id"],
+      audits,
+      { detail_codes: "text[]" },
+    );
+
+    const quarantines = readJsonl("redaction_quarantine.jsonl");
+    console.log(`Seeding ${quarantines.length} quarantines...`);
+    await insertRows(
+      client,
+      "fact_redaction_quarantine",
+      ["quarantine_id", "occurred_at", "stage", "status", "detail_codes"],
+      quarantines,
+      { detail_codes: "text[]" },
+    );
+
+    const overrides = readJsonl("theme_overrides.jsonl");
+    console.log(`Seeding ${overrides.length} theme overrides...`);
+    await insertRows(
+      client,
+      "fact_theme_override",
+      ["override_id", "feature_key", "aspect", "critical", "note"],
+      overrides,
+    );
+
+    const telemetry = readJsonl("product_telemetry.jsonl");
+    console.log(`Seeding ${telemetry.length} telemetry sessions...`);
+    await insertRows(
+      client,
+      "fact_product_telemetry",
+      ["session_id", "device", "rage_clicks", "dead_clicks", "events", "linked_response_id"],
+      telemetry,
+      { events: "text[]" },
+    );
+
+    await client.query("COMMIT");
+    console.log("Done.");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+    await pool.end();
+  }
 }
 
-main().catch((err) => {
-  console.error(err);
+main().catch((error) => {
+  console.error(error);
   process.exit(1);
 });

@@ -98,13 +98,15 @@ Not yet wired to the backend below.
   persisting or paging, for validating routing decisions against real traffic before enabling
   writes.
 
-**Database schema** (`db/migrations/0001_init.sql`) — the full canonical schema, runnable via
-`scripts/setup-postgres.sh` (creates the role/db, applies the migration) and seedable with the
-synthetic dataset via `scripts/seed-postgres.mjs`.
+**Database schema** (`db/migrations/`) — the canonical schema, runnable via
+`scripts/setup-postgres.sh` (creates the role/db and applies `0001_init.sql` and
+`0002_synthetic_metrics.sql`) and seedable with the synthetic dataset via
+`scripts/seed-postgres.mjs`.
 
-**Synthetic dataset** (`data/synthetic/`) — 8,000 generated NPS responses, ~900 derived tickets,
-and matching audit events, shaped exactly like the canonical schema, for local development,
-demos, and seeding Postgres. See `data/synthetic/README.md`.
+**Synthetic dataset** — a seeded quota corpus (`src/backend/synthetic/buildCorpus.ts`) covering
+NPS, survey invitations, clinical sessions, closed-loop clocks, redaction quarantine, and
+patient-session telemetry. The in-memory store builds it on first use. Postgres loads the JSONL
+written by `bun scripts/generate-synthetic-data.mjs`. See `data/synthetic/README.md`.
 
 **Behavioural telemetry (Hotjar)** (`src/lib/hotjar.ts`, `src/components/analytics/`) — an
 SSR-safe Hotjar wrapper initialised from the root layout, fixed-name product events (filters, tab
@@ -218,8 +220,9 @@ won't start a second copy.
 **Using real Postgres instead of the in-memory store:**
 
 ```sh
-bash scripts/setup-postgres.sh          # creates the role/db and applies db/migrations/0001_init.sql
-node scripts/seed-postgres.mjs          # optional: load the synthetic dataset into it
+bash scripts/setup-postgres.sh          # creates the role/db and applies db/migrations/*.sql
+bun scripts/generate-synthetic-data.mjs # writes data/synthetic/generated/*.jsonl
+bun scripts/seed-postgres.mjs           # optional: load that corpus into Postgres
 DATABASE_URL=postgres://ellyra:ellyra_dev_pw@127.0.0.1:5432/ellyra_pulse ./start.sh --with-postgres
 ```
 
@@ -241,9 +244,8 @@ curl -H "Authorization: Bearer $TOKEN" \
   "http://127.0.0.1:5173/api/v1/metrics/executive?from=2026-03-01&to=2026-09-21"
 ```
 
-This should return live metrics computed from the 8,000-row synthetic dataset (auto-loaded into
-the in-memory store on first API request, or seeded into Postgres yourself — see
-`data/synthetic/README.md`).
+This should return live metrics computed from the synthetic quota corpus (built into the
+in-memory store on first API request, or seeded into Postgres — see `data/synthetic/README.md`).
 
 **Optional — Hotjar behavioural telemetry:** set these in `.env` or `.env.local` (see
 `.env.example`). They're inlined at build time, so rebuild/restart after changing them.

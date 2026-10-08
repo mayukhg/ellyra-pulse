@@ -762,7 +762,7 @@ export function createPostgresRepository(pool: Pool): Repository {
 
 interface TicketRowSql {
   ticket_id: string;
-  response_id: string;
+  response_id: string | null;
   ticket_type: TicketSnapshot["ticketType"];
   status: TicketSnapshot["status"];
   priority: TicketSnapshot["priority"];

@@ -71,8 +71,7 @@ const PATTERNS: Array<{ tag: RedactionTag; regex: RegExp; validate?: (raw: strin
 // Heuristic name detection: a capitalized two-or-three-word run immediately preceded by a
 // self-introduction phrase ("this is", "my name is", "I'm", "I am"), or "Dear <Name>," /
 // "Hi <Name>,". This is NOT a real clinical NER model — it catches the common self-introduction
-// pattern seen in NPS free text (see data/synthetic/generate-synthetic-data.mjs's "Hi, this is
-// Jordan Ellis" fixture case) and nothing more sophisticated. A name mentioned mid-sentence
+// pattern seen in NPS free text and nothing more sophisticated. A name mentioned mid-sentence
 // without one of these cues, a single-word name, or a name in a script that doesn't capitalize
 // this way will NOT be caught. Replace with the approved medical NER service before production
 // use — this heuristic exists so the redaction pipeline has *some* free-text name coverage to

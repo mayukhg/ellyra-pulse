@@ -96,13 +96,15 @@ export function createMemoryRepository(): Repository {
       if (patch.resolutionCode) ticket.resolutionCode = patch.resolutionCode;
       ticket.lastUpdatedBy = patch.actorId;
 
-      store.appendAudit({
-        responseId: ticket.responseId,
-        stage: "routing",
-        status: "completed",
-        detailCodes: [`ticket_status:${oldStatus}->${patch.status}`],
-        requestId: "n/a",
-      });
+      if (ticket.responseId) {
+        store.appendAudit({
+          responseId: ticket.responseId,
+          stage: "routing",
+          status: "completed",
+          detailCodes: [`ticket_status:${oldStatus}->${patch.status}`],
+          requestId: "n/a",
+        });
+      }
       store.publish({
         type: "ticket.updated",
         id: ticket.ticketId,
