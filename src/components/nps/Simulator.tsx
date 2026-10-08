@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { trackHotjarEvent } from "@/lib/hotjar";
 import { Chip, SectionHeading } from "./shared";
 
 const SAMPLES = [
@@ -143,6 +144,7 @@ export function Simulator() {
 
   const run = () => {
     if (!input.trim()) return;
+    trackHotjarEvent("simulator_pipeline_run");
     setResult(classify(input));
     setStep(0);
   };
@@ -159,6 +161,7 @@ export function Simulator() {
       <div className="mt-4 grid gap-5 lg:grid-cols-2">
         <div className="space-y-3">
           <textarea
+            data-hj-suppress
             value={input}
             onChange={(e) => setInput(e.target.value)}
             rows={5}
@@ -277,7 +280,10 @@ export function Simulator() {
                 Routed: {result.action}
               </div>
               <p className="mt-1.5 text-xs text-muted-foreground">{result.actionDetail}</p>
-              <p className="mt-3 rounded-md border border-border bg-background/60 p-2 font-mono text-[11px] text-muted-foreground">
+              <p
+                data-hj-suppress
+                className="mt-3 rounded-md border border-border bg-background/60 p-2 font-mono text-[11px] text-muted-foreground"
+              >
                 stored: {result.redacted}
               </p>
             </div>

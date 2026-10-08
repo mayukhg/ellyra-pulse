@@ -204,7 +204,9 @@ export function VerbatimHub({
               </span>
             </div>
 
-            <p className="mt-3 text-sm leading-relaxed text-foreground">{redactText(v.text)}</p>
+            <p data-hj-suppress className="mt-3 text-sm leading-relaxed text-foreground">
+              {redactText(v.text)}
+            </p>
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Chip tone={v.sentiment >= 0 ? "good" : "safety"}>
@@ -273,11 +275,14 @@ export function VerbatimHub({
                 </DialogDescription>
               </DialogHeader>
 
-              <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm leading-relaxed">
+              <p
+                data-hj-suppress
+                className="rounded-lg border border-border bg-muted/40 p-3 text-sm leading-relaxed"
+              >
                 {redactText(open.text)}
               </p>
 
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+              <div data-hj-suppress className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                 {[
                   ["Session ID", open.sessionId],
                   ["Model version", open.modelVersion],

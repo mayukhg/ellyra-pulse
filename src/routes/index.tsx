@@ -12,6 +12,7 @@ import { VerbatimHub } from "@/components/nps/VerbatimHub";
 import { Simulator } from "@/components/nps/Simulator";
 import { Chip } from "@/components/nps/shared";
 import type { Aspect, Feature, QuadrantPoint } from "@/lib/nps-data";
+import { trackHotjarEvent } from "@/lib/hotjar";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -36,12 +37,26 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
-  const [feature, setFeature] = useState<Feature | null>(null);
-  const [aspect, setAspect] = useState<Aspect | null>(null);
+  const [feature, setFeatureState] = useState<Feature | null>(null);
+  const [aspect, setAspectState] = useState<Aspect | null>(null);
   const [theme, setTheme] = useState<QuadrantPoint | null>(null);
-  const [tab, setTab] = useState("scorecard");
+  const [tab, setTabState] = useState("scorecard");
+
+  const setFeature = (f: Feature | null) => {
+    if (f) trackHotjarEvent("filter_applied");
+    setFeatureState(f);
+  };
+  const setAspect = (a: Aspect | null) => {
+    if (a) trackHotjarEvent("filter_applied");
+    setAspectState(a);
+  };
+  const setTab = (t: string) => {
+    trackHotjarEvent(`dashboard_tab_${t}_viewed`);
+    setTabState(t);
+  };
 
   const selectTheme = (p: QuadrantPoint | null) => {
+    if (p) trackHotjarEvent("filter_applied");
     setTheme(p);
     if (p) setTab("verbatims");
   };
