@@ -1,7 +1,8 @@
 # How to Use Ellyra Pulse
 
 A walkthrough of every workflow implemented in the dashboard UI (`src/routes/index.tsx` and
-`src/components/nps/*`), with the exact clicks each one takes. See `README.md` for how to start
+`src/components/nps/*`), plus the developer-only UX telemetry tools (`src/components/dev/`,
+`/dev/hotjar-insights`), with the exact clicks each one takes. See `README.md` for how to start
 the app and `docs/QA_AUTOMATION_GUIDE.md` for the backend API surface.
 
 > **Current state:** the UI you'll read about here renders from the prototype's mock dataset
@@ -10,7 +11,7 @@ the app and `docs/QA_AUTOMATION_GUIDE.md` for the backend API surface.
 > anywhere yet — see README's "Known gaps" section. The workflows and UI steps below are exactly
 > what's implemented today.
 
-The app has four tabs, each its own workflow. Three of them (Scorecard, Root Cause & ABSA,
+The app has four tabs, each its own workflow (Workflow 5 covers the separate developer tools). Three of them (Scorecard, Root Cause & ABSA,
 Verbatims) share a single set of filters, so a selection made in one tab narrows what you see in
 another — that cross-tab linkage is workflow 2 below.
 
@@ -171,6 +172,49 @@ flowchart LR
 
 ---
 
+## Workflow 5 — Inspect UX telemetry (developers only)
+
+**Where:** the **Hotjar QA harness** (collapsed panel, bottom-right of every page in dev) and the
+**Hotjar Behavioral Insights** dashboard at `/dev/hotjar-insights`. Neither exists in production
+builds. Everything on the dashboard is **synthetic data** — it does not read from Hotjar. Full
+reference: `docs/HOTJAR_TELEMETRY.md`.
+
+```mermaid
+flowchart TD
+    A["Click 'Hotjar QA harness'\n(bottom-right)"] --> B["Check status grid:\nLIVE / PENDING / LOCAL ONLY,\nwindow.hj, queue length"]
+    B --> C["Pick a synthetic persona\n→ identifyUser()"]
+    C --> D["Fire an event:\nfilter_applied / telemetry_export_initiated /\nerror_boundary_tripped"]
+    D --> E["Watch the command log:\n'sent' (reached Hotjar) or 'local'"]
+    E --> F["Check the Privacy masking test zone\n(right column must be redacted in recordings)"]
+    F --> G["Click 'Open Hotjar insights dashboard'"]
+    G --> H["Narrow the cohort:\ntier / role / device / frustration"]
+    H --> I["Click a funnel drop-off\n→ session table filters to those users"]
+    I --> J["Click a session row\n→ timeline drawer"]
+```
+
+**Steps:**
+1. Expand the **Hotjar QA harness**. The header badge shows **LIVE** when Hotjar initialised,
+   **LOCAL ONLY** when no `VITE_HOTJAR_SITE_ID` is set (commands are logged but not sent).
+2. Under **User persona simulator**, pick a persona and click **identifyUser()** to attach its
+   hash and tier/role/device to the Hotjar session; **resetHotjarUser()** clears it.
+3. Under **Event dispatcher**, click an event button. Each command appears in the log as
+   **sent** or **local**. Real product actions (filters, tab switches, running the simulator)
+   appear here too.
+4. The **Privacy masking test zone** shows public values beside a `data-hj-suppress` block of
+   fake secrets — use it to confirm masking in a real Hotjar recording.
+5. Click **Open Hotjar insights dashboard** (or go to `/dev/hotjar-insights`). Use the
+   **Cohort** bar to filter every widget; change **Sample size** for more synthetic sessions.
+6. In **Funnel conversion & drop-off**, click a "−N dropped" button to filter the **Session
+   replay simulator** table to users who abandoned at that step; click it again (or the chip
+   above the table) to clear.
+7. Click any session row to open its **event timeline** drawer; the click & dead-click widget
+   flags targets amber (≥15% dead clicks) or red (≥30%).
+
+In a non-dev build with `VITE_ENABLE_HOTJAR_DEBUG=true`, add `?debug=hotjar` to the URL to show
+the harness.
+
+---
+
 ## Quick reference: which tab for which question
 
 | You want to... | Go to |
@@ -181,3 +225,5 @@ flowchart LR
 | Read what a specific user actually said | Verbatims & closed loop |
 | Take action on a detractor, safety flag, or promoter | Verbatims & closed loop → open a card |
 | See how a new piece of feedback would be handled, without it being real | Workflow simulator |
+| *(Developers)* Check Hotjar is receiving events, or test DOM masking | Hotjar QA harness |
+| *(Developers)* Explore funnel / frustration patterns on synthetic sessions | `/dev/hotjar-insights` |

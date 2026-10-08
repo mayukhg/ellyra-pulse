@@ -12,6 +12,7 @@ is `src/routes/__root.tsx`.
 | `index.tsx` | `/` |
 | `about.tsx` | `/about` |
 | `users/index.tsx` | `/users` |
+| `dev/hotjar-insights.tsx` | `/dev/hotjar-insights` (dev-only — guarded with `beforeLoad` + `notFound()`, see `docs/HOTJAR_TELEMETRY.md` §6) |
 | `users/$id.tsx` | `/users/:id` (dynamic — bare `$`, no curly braces) |
 | `posts/{-$category}.tsx` | `/posts/:category?` (optional segment) |
 | `files/$.tsx` | `/files/*` (splat — read via `_splat` param, never `*`) |

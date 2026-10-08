@@ -22,6 +22,14 @@ The UI must never receive original unredacted feedback. The public/API-facing `t
 ## 2. UI architecture and component hierarchy
 
 ```text
+RootShell (src/routes/__root.tsx)
+└── HotjarProvider            # client-only Hotjar init + SPA stateChange; lazy-mounts the dev harness
+    ├── NpsIntelligencePage   # "/"
+    ├── HotjarMetricsDashboard  # "/dev/hotjar-insights" — dev-only, synthetic data, 404 in production
+    └── HotjarTestHarness       # dev-only floating QA widget (dev server or ?debug=hotjar)
+```
+
+```text
 NpsIntelligencePage
 ├── DashboardHeader
 │   ├── ReportingWindow
@@ -544,7 +552,7 @@ Use TanStack Query for server state and React state/URL search parameters for vi
 6. On a P0 realtime event, immediately invalidate open-P0 and verbatim queries and show the existing safety alert treatment.
 7. Format durations, dates, percentages, and NPS on the client; keep raw API values numeric.
 8. Preserve the current empty, loading, partial-error, and permission-denied states independently per surface.
-9. Never place returned verbatim or session telemetry in local storage, URL parameters, analytics events, or client error reports.
+9. Never place returned verbatim or session telemetry in local storage, URL parameters, analytics events, or client error reports. Hotjar custom events (`trackHotjarEvent`) must be fixed, code-defined names — never interpolate user text, response/session IDs, filter values, or error messages. The approved catalogue is in `docs/HOTJAR_TELEMETRY.md` §4; SPA route changes report the pathname only, never the query string.
 
 ## 9. PHI redaction and security
 
@@ -589,7 +597,10 @@ The clinical-risk pre-check may inspect raw text inside the restricted boundary 
 - Keep raw-text access break-glass, time-limited, justified, and fully audited.
 - Log actor, action, target IDs, result, and request ID, but never verbatim text or PHI.
 - Apply retention/deletion policies separately to raw restricted data and redacted analytics data.
-- Exclude all sensitive values from APM attributes, exception messages, prompt traces, and replay tools.
+- Exclude all sensitive values from APM attributes, exception messages, prompt traces, and replay tools. For Hotjar session replay this means:
+  - every element rendering verbatim text (redacted or not), session telemetry, simulator input/output, identifiers, or secrets carries `data-hj-suppress` on the smallest enclosing container — current coverage and the review checklist are in `docs/HOTJAR_TELEMETRY.md` §5;
+  - `identifyUser` sends only a one-way user hash plus allowlisted attributes (`account_tier`, `user_role`, `device`); `sanitizeHotjarAttributes` drops non-primitive values and PII-looking keys as a backstop;
+  - Hotjar does not sign a HIPAA BAA, so whether it may run on PHI-bearing surfaces at all is governed by `docs/PRIVACY_HOTJAR_DPIA.md`, not by masking alone.
 - Run automated redaction regression tests including DOB formats, NHS checksum cases, MRN variants, names, OCR spacing, Unicode, and adversarial prompt text.
 - Treat text from users as data, never executable instructions. Classifiers must resist prompt injection.
 - Make safety routing deterministic around approved rules; an LLM may add evidence but must not be the only P0 gate.
@@ -671,3 +682,5 @@ function route(input: ClassifiedResponse): RoutingDecision {
 - Aggregate breakdowns below the privacy threshold are suppressed.
 - All security-sensitive actions are audit logged without PHI.
 - Contract, unit, integration, redaction, authorisation, and end-to-end tests pass.
+- Hotjar recordings and heatmaps of every surface show no verbatim, session-telemetry, identifier, or secret text (all such nodes carry `data-hj-suppress`), and no Hotjar event or identify payload contains user text or PII.
+- Production builds (without `VITE_ENABLE_HOTJAR_DEBUG=true`) contain neither the Hotjar QA harness nor the insights dashboard or synthetic fixtures, and `/dev/hotjar-insights` returns 404.

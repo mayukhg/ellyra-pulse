@@ -86,6 +86,21 @@ flowchart LR
 9. **Dashboard.** The executive and operational views (`docs/DESIGN_UI.md` §2) read from the
    warehouse — never from raw or in-flight session data.
 
+### Out of band: dashboard UX telemetry
+
+Hotjar behavioural telemetry (`docs/HOTJAR_TELEMETRY.md`) is **not part of this pipeline**. It
+records how workforce users interact with the dashboard UI and goes directly from the browser to
+Hotjar:
+
+```mermaid
+flowchart LR
+    O["Dashboard UI\n(browser)"] -- "recordings, heatmaps,\nfixed-name events\n(PHI nodes suppressed)" --> X["Hotjar\n(third party)"]
+```
+
+Nothing from Hotjar flows into ingestion, the warehouse, routing, or the realtime stream, and no
+NPS response data is sent to Hotjar as events. Whether Hotjar may run on surfaces that display
+patient feedback is governed by `docs/PRIVACY_HOTJAR_DPIA.md`.
+
 ## Legend
 
 | Style | Meaning |

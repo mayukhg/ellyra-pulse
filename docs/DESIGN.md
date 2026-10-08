@@ -298,6 +298,12 @@ Metabase or Superset (open-source, fast to stand up, good enough for this) readi
 warehouse `fact_nps_response` table below; Looker if the org already has it. Avoid building a
 bespoke dashboard frontend unless the org has specific product-embedding needs.
 
+For UX behavioural telemetry on the dashboard itself (session recordings, heatmaps, funnel
+events), Hotjar is integrated via `@hotjar/browser` — see `docs/HOTJAR_TELEMETRY.md`. Caveat:
+it is not HIPAA-eligible (no BAA), so its use on any surface that renders patient feedback is
+bounded by §8 below and `docs/PRIVACY_HOTJAR_DPIA.md`; a BAA-signing alternative is a valid
+substitute if that decision rules Hotjar out.
+
 ---
 
 ## 7. Data Model Sketch
@@ -343,6 +349,13 @@ dim_theme
   ingestion pipeline, before analytics storage, before any third-party LLM call.
 - If using a third-party LLM API for sentiment/theme tagging, confirm a BAA is in place, or run
   redaction aggressively enough beforehand that no PHI reaches that API regardless.
+- The same rule applies to **every third-party data processor**, not just LLMs — including
+  client-side behavioural analytics and session replay. Hotjar (integrated for UX telemetry, see
+  `docs/HOTJAR_TELEMETRY.md`) does not sign a BAA, so it must either be kept off PHI-bearing
+  surfaces or rely on DOM suppression strong enough that no PHI is ever rendered into a
+  recording. That decision, plus consent (UK/EU ePrivacy), retention, and account access, is
+  recorded in `docs/PRIVACY_HOTJAR_DPIA.md` and must be signed off before Hotjar runs against
+  real feedback data.
 - Access to the unredacted PHI store is separately permissioned and audit-logged; the BI
   dashboard and analytics warehouse never touch it.
 - Retention: define a deletion policy for raw verbatims consistent with your data retention

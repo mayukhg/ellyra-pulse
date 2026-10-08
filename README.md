@@ -106,14 +106,26 @@ synthetic dataset via `scripts/seed-postgres.mjs`.
 and matching audit events, shaped exactly like the canonical schema, for local development,
 demos, and seeding Postgres. See `data/synthetic/README.md`.
 
-**Tests** (`src/backend/**/__tests__/`, `bun run test`) — 46 vitest tests covering redaction,
-the safety gate, ABSA, routing, JWT/HMAC auth, paging, shadow mode, and full request/response
-integration through the dispatcher — run against both the in-memory repository (always) and the
-real Postgres repository (when `DATABASE_URL` is set). See `docs/VALIDATION_REPORT.md` for the
-full run, including two real bugs the tests caught before this ever reached a repo history.
+**Behavioural telemetry (Hotjar)** (`src/lib/hotjar.ts`, `src/components/analytics/`) — an
+SSR-safe Hotjar wrapper initialised from the root layout, fixed-name product events (filters, tab
+views, simulator runs, error boundary), and `data-hj-suppress` masking on every verbatim,
+session-telemetry, and simulator-input surface. Dev-only tooling, excluded from production
+builds: a floating QA harness (`?debug=hotjar`) and a synthetic-data insights dashboard at
+`/dev/hotjar-insights`, both driven by `src/test/fixtures/hotjarSyntheticData.ts`. See
+[`docs/HOTJAR_TELEMETRY.md`](docs/HOTJAR_TELEMETRY.md), and
+[`docs/PRIVACY_HOTJAR_DPIA.md`](docs/PRIVACY_HOTJAR_DPIA.md) before enabling it for real users.
+
+**Tests** (`bun run test`) — 46 backend vitest tests (`src/backend/**/__tests__/`) covering
+redaction, the safety gate, ABSA, routing, JWT/HMAC auth, paging, shadow mode, and full
+request/response integration through the dispatcher — run against both the in-memory repository
+(always) and the real Postgres repository (when `DATABASE_URL` is set) — plus 13 frontend tests
+(`src/test/hotjar.test.ts`) for the Hotjar wrapper, synthetic fixtures, and dashboard metrics. See
+`docs/VALIDATION_REPORT.md` for the full run, including the real bugs the tests caught before
+this ever reached a repo history.
 
 **CI** (`.github/workflows/ci.yml`) — runs the test suite against both repositories with a real
-Postgres service container, plus `tsc --noEmit` and `eslint` scoped to `src/backend`.
+Postgres service container, plus `tsc --noEmit` and `eslint` scoped to `src/backend` (the new
+Hotjar files are Prettier-clean but not yet in CI's lint scope).
 
 ### Known gaps and caveats (read before treating this as production-ready)
 
@@ -135,6 +147,13 @@ Postgres service container, plus `tsc --noEmit` and `eslint` scoped to `src/back
   (e.g. Redis pub/sub) before horizontal scaling.
 - **Frontend is not yet wired to the backend** — `src/lib/nps-data.ts` mock data is still what
   the UI renders from.
+- **Hotjar is not cleared for real patient data.** Hotjar does not sign a HIPAA BAA, masking
+  via `data-hj-suppress` is opt-in per element, and `initHotjar()` is not yet gated on user
+  consent (required for UK/EU users). Until the decisions in `docs/PRIVACY_HOTJAR_DPIA.md` are
+  signed off, leave `VITE_HOTJAR_SITE_ID` unset in any deployment that shows real feedback.
+  `resetHotjarUser()` also isn't wired to a logout yet — the frontend has no auth flow.
+- **Production builds must not set `VITE_ENABLE_HOTJAR_DEBUG=true`** — doing so compiles the
+  dev QA harness and `/dev/hotjar-insights` into the bundle (as lazy chunks).
 - The pre-existing Lovable-generated frontend has ~390 Prettier formatting violations unrelated
   to this work (`bun run lint` unscoped will show them); CI's lint step is scoped to
   `src/backend` for that reason.
@@ -150,7 +169,9 @@ Postgres service container, plus `tsc --noEmit` and `eslint` scoped to `src/back
 4. Connect the prototype UI's TanStack Query hooks to the real endpoints, surface by surface,
    replacing `src/lib/nps-data.ts` imports.
 5. Move realtime pub/sub to a shared broker before running more than one server instance.
-6. Layer in Phase 4's deeper analysis (root-cause quadrant, driver analysis, outcome correlation,
+6. Resolve the Hotjar privacy decisions (`docs/PRIVACY_HOTJAR_DPIA.md` §5), then add consent
+   gating to `initHotjar()` and wire `resetHotjarUser()` into logout once auth exists.
+7. Layer in Phase 4's deeper analysis (root-cause quadrant, driver analysis, outcome correlation,
    taxonomy re-clustering) once the above is live and generating real data.
 
 ---
@@ -160,8 +181,11 @@ Postgres service container, plus `tsc --noEmit` and `eslint` scoped to `src/back
 The frontend and backend API run as a single TanStack Start process (`bun run dev` / `npm run
 dev` under the hood) — there's no separate server to start.
 
-**Prerequisites:** [Node.js](https://nodejs.org) 18+ (npm comes with it). [Bun](https://bun.sh)
-is optional but used automatically if present (`bun.lock` is checked in) — it installs faster.
+**Prerequisites:** [Node.js](https://nodejs.org) 20.19+ or 22+ (npm comes with it) — Vite 8
+and Vitest 5 do not run on Node 18 or earlier. [Bun](https://bun.sh) is optional but used
+automatically if present (`bun.lock` is checked in) — it installs faster. Installing with npm
+(rather than bun) currently needs `npm install --legacy-peer-deps` because of a pre-existing
+peer-dependency conflict.
 
 **Quick start (recommended):**
 
@@ -220,7 +244,20 @@ This should return live metrics computed from the 8,000-row synthetic dataset (a
 the in-memory store on first API request, or seeded into Postgres yourself — see
 `data/synthetic/README.md`).
 
+**Optional — Hotjar behavioural telemetry:** set these in `.env` or `.env.local` (see
+`.env.example`). They're inlined at build time, so rebuild/restart after changing them.
+
+| Variable | Effect |
+|---|---|
+| `VITE_HOTJAR_SITE_ID` | Hotjar site ID; Hotjar doesn't load at all when unset |
+| `VITE_HOTJAR_VERSION` | Snippet version (default `6`) |
+| `VITE_ENABLE_HOTJAR_DEBUG` | `true` = Hotjar debug logging + dev tooling compiled in. **Leave unset/`false` for production** |
+
+In dev, the Hotjar QA harness sits collapsed in the bottom-right corner and the insights
+dashboard is at **http://127.0.0.1:5173/dev/hotjar-insights**. Full guide:
+[`docs/HOTJAR_TELEMETRY.md`](docs/HOTJAR_TELEMETRY.md).
+
 **Using the dashboard UI once it's running:** see [`docs/HOW_TO_USE.md`](docs/HOW_TO_USE.md) for
-a walkthrough of all four workflows (executive scorecard, root-cause drill-down, verbatim
-review/closed-loop actions, and the sandbox simulator), each with a diagram and click-by-click
-steps.
+a walkthrough of all four dashboard workflows (executive scorecard, root-cause drill-down,
+verbatim review/closed-loop actions, and the sandbox simulator), plus the developer-only UX
+telemetry tools, each with a diagram and click-by-click steps.

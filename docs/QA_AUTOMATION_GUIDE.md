@@ -40,6 +40,11 @@ TOKEN=$(AUTH_JWT_SECRET=$AUTH_JWT_SECRET node scripts/mint-dev-token.mjs <role> 
 Roles: `dashboard_viewer`, `customer_success`, `clinical_safety`, `administrator` (roles other
 than `administrator` gate specific endpoints — see the matrix below).
 
+**Frontend telemetry tooling:** in dev, a Hotjar QA harness (bottom-right corner) shows the
+Hotjar queue status and a live command log, and `/dev/hotjar-insights` renders synthetic UX
+metrics. In a build with `VITE_ENABLE_HOTJAR_DEBUG=true`, append `?debug=hotjar` to any URL to
+mount the harness. See `docs/HOTJAR_TELEMETRY.md` §7–§8.
+
 **Ingestion auth is different**: `/api/v1/responses/ingest` requires an HMAC-SHA256 signature,
 not a bearer token — see "Signing an ingest request" below.
 
@@ -116,6 +121,37 @@ Ranked by what actually matters for this product — safety and privacy first.
 3. Confirm `/verbatims` never returns a `verbatim_ciphertext_ref`-equivalent or raw session
    identifier to a `dashboard_viewer` role.
 
+### P0 — behavioural telemetry never captures PHI
+
+Hotjar session replay records the rendered DOM (`docs/HOTJAR_TELEMETRY.md`). In a browser
+against `npm run dev`:
+
+1. On the **Verbatims & closed loop** tab, assert every verbatim text node (list cards and the
+   detail dialog) and the detail dialog's session-telemetry grid has a `data-hj-suppress`
+   ancestor. Example check: every `<p>` whose text matches a known verbatim from
+   `src/lib/nps-data.ts` satisfies `el.closest('[data-hj-suppress]') !== null`.
+2. On the **Workflow simulator** tab, assert the input `<textarea>` and the "stored:" output
+   both carry `data-hj-suppress`.
+3. With the QA harness's event log open, exercise every filter, tab, and the simulator; assert
+   every logged event name is in the catalogue in `docs/HOTJAR_TELEMETRY.md` §4 and none
+   contains verbatim text, IDs, or filter values. `stateChange` entries must be pathnames with
+   no query string.
+4. `identifyUser` from the harness: assert the payload contains only the allowlisted
+   attributes. Unit-level coverage: `sanitizeHotjarAttributes` tests in `src/test/hotjar.test.ts`.
+5. With a real Hotjar site ID, open a recording of the session from steps 1–2 and confirm the
+   suppressed regions render as redaction blocks (the harness's **Privacy masking test zone** is
+   a ready-made fixture for this).
+
+### P1 — dev tooling excluded from production builds
+
+1. `VITE_ENABLE_HOTJAR_DEBUG=false npm run build`, then search `.output/` for `Hotjar QA
+   harness`, `Session replay simulator`, `sk_live_synth`, and `generateSyntheticHotjarUsers` —
+   every count must be 0 (script in `docs/HOTJAR_TELEMETRY.md` §6).
+2. Serve that build: `/dev/hotjar-insights` returns the 404 page, and `?debug=hotjar` mounts no
+   harness.
+3. With `VITE_HOTJAR_SITE_ID` unset, confirm no request is made to `static.hotjar.com` and
+   `window.hj` is undefined.
+
 ### P1 — routing correctness (non-safety)
 
 Exercise the full score range against `/workflow/simulate` (no persistence needed):
@@ -157,5 +193,6 @@ A response's shape should always match `docs/DESIGN_UI.md` §4's TypeScript cont
 (`src/backend/contracts.ts` is the source of truth if the two ever disagree — it's the one the
 code actually validates against). Error responses always follow the `ApiError` envelope with a
 `requestId`. See `docs/VALIDATION_REPORT.md` for this project's own baseline validation run and
-current pass rate, and `src/backend/**/__tests__/` for the existing automated suite (`bun run
-test`) — new QA workflows should extend that suite rather than duplicate it where possible.
+current pass rate, and `src/backend/**/__tests__/` plus `src/test/` for the existing automated
+suite (`bun run test`) — new QA workflows should extend that suite rather than duplicate it where
+possible.

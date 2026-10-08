@@ -151,3 +151,53 @@ silently skipped.
 
 None of these were hidden — each is called out in code comments, the README, and this report so
 the next phase of work starts from an accurate picture rather than rediscovering them.
+
+---
+
+## Addendum — Hotjar behavioural telemetry (2026-10-08)
+
+Scope: the Hotjar integration, dev QA harness, insights dashboard, and synthetic data engine
+described in `docs/HOTJAR_TELEMETRY.md`. Frontend-only; no backend code changed.
+
+### Automated
+
+| Check | Result |
+|---|---|
+| `src/test/hotjar.test.ts` — fixture determinism/prefix stability, UUID-shaped unique hashes, duration bounds, ordered lifecycle traces, signal/interaction consistency, synthetic-only masking payloads, timeline ordering, funnel monotonicity and drop-off sums, KPI consistency, cohort filters, dead-click hotspot detection, attribute sanitisation, SSR no-op | 13/13 pass |
+| Full suite without `DATABASE_URL` | 57 pass, 3 correctly skipped (the Postgres-only tests, as before) |
+| Full suite with `DATABASE_URL` | Not re-run for this change (no backend code touched) |
+| `tsc --noEmit` | 0 errors |
+| `eslint` + Prettier on all new Hotjar files | 0 errors |
+| `VITE_ENABLE_HOTJAR_DEBUG=false npm run build` | Succeeds; `Hotjar QA harness`, `Session replay simulator`, `sk_live_synth`, `generateSyntheticHotjarUsers` all absent from client and server bundles; Hotjar SDK present |
+| `VITE_ENABLE_HOTJAR_DEBUG=true npm run build` | Succeeds; harness, dashboard, and fixtures emitted as separate lazy chunks |
+
+### Manual (live dev server, real Hotjar site ID)
+
+- Hotjar script loaded (`window._hjSettings` = site 1058676, v6, debug on); `init`,
+  `identify`, and `filter_applied` all logged as **sent**.
+- `/dev/hotjar-insights`: KPIs, funnel, click distribution, and the session table render;
+  clicking the final-step drop-off filtered 250 sessions to the 77 that abandoned there; the
+  session drawer showed a chronological timeline and a suppressed session-context block.
+- Main dashboard, Verbatims tab: all 12 verbatim cards carry `data-hj-suppress`.
+
+### Bugs found and fixed during validation
+
+1. **Low-entropy synthetic hashes** — FNV-1a over strings differing only in their last
+   character produced visibly repetitive IDs (`ee44ed00-ef44-ee93-f044-…`). Fixed with a
+   murmur3 `fmix32` finaliser.
+2. **Cohort filter bar rendered as a vertical stack** — the shadcn `Card` is not a flex container,
+   so `flex-row` had no effect. Fixed by adding `flex` explicitly (same for KPI cards).
+3. **Unverifiable "script loaded" indicator removed** — the harness originally inferred Hotjar's
+   script had loaded from `window.hj.q` disappearing, which isn't a documented contract; it now
+   reports only observable facts (`window.hj` present, queue length).
+
+### Environment notes
+
+- Vite 8 / Vitest 5 require Node 20.19+; validation ran on Node 22.23.3.
+- `npm install` needs `--legacy-peer-deps` (pre-existing peer conflict; bun is unaffected).
+
+### Known gaps
+
+Privacy decisions (BAA, consent gating, which surfaces Hotjar may run on) are open — see
+`docs/PRIVACY_HOTJAR_DPIA.md`. `resetHotjarUser()` is not wired to a logout (no frontend auth
+yet). CI lint scope still excludes the frontend.

@@ -1,8 +1,8 @@
 # Synthetic dataset
 
 Generated fixture data shaped like the canonical schema in `db/migrations/0001_init.sql` (§3 of
-`docs/UI_INTEGRATION_REQUIREMENTS.md`), for local backend development, seeding the in-memory
-store (`src/server/store.ts`), and frontend fixtures. No real user data — every row is
+`docs/DESIGN_UI.md`), for local backend development, seeding the in-memory
+store (`src/backend/store.ts`), and frontend fixtures. No real user data — every row is
 synthetically generated.
 
 Regenerate with:
@@ -25,7 +25,7 @@ Edit `scripts/generate-synthetic-data.mjs` and re-run it rather than hand-editin
 | `response_processing_audit.json` | 8,000 | `response_processing_audit` |
 
 Field names in the JSON are `snake_case` to match the SQL column names directly (for a future
-`COPY ... FROM` / bulk-insert into Postgres). `src/server/fixtures.ts` maps them to the
+`COPY ... FROM` / bulk-insert into Postgres). `src/backend/fixtures.ts` maps them to the
 `camelCase` shapes the in-memory store and API routes use.
 
 ## Shape notes
@@ -38,10 +38,10 @@ Field names in the JSON are `snake_case` to match the SQL column names directly 
   run to run only if you change the PRNG seed.
 - ~0.25% of responses are safety-flagged (roughly the order of magnitude of the Hallucination /
   Inaccuracy Flag Rate target in `docs/DESIGN.md` §6.1), each with one reason code from
-  `SAFETY_REASON_CODES` in `src/server/contracts.ts` and no other aspect tags (a safety case
+  `SAFETY_REASON_CODES` in `src/backend/contracts.ts` and no other aspect tags (a safety case
   isn't also ABSA-tagged in this fixture — treat that as a simplification, not a modeling claim).
 - `verbatim_redacted` already has PHI patterns (~18% DOB, ~15% name, ~6% MRN, ~5% email)
-  redacted the same way `src/server/ingestion/redaction.ts` would — the pre-redaction raw text is
+  redacted the same way `src/backend/ingestion/redaction.ts` would — the pre-redaction raw text is
   not persisted anywhere, matching the "raw text never leaves the restricted boundary" rule in
   §9 of the integration spec.
 - Tickets are pre-populated with a realistic status mix (~60% resolved, ~25% contacted, ~15%
@@ -51,9 +51,9 @@ Field names in the JSON are `snake_case` to match the SQL column names directly 
 ## Loading it
 
 ```ts
-import { loadSyntheticFixtures } from "@/server/fixtures";
+import { loadSyntheticFixtures } from "@/backend/fixtures";
 
-loadSyntheticFixtures(); // populates the in-memory store (src/server/store.ts) for local dev
+loadSyntheticFixtures(); // populates the in-memory store (src/backend/store.ts) for local dev
 ```
 
 This is fixture data for development and demos — do not seed a production database from it.
