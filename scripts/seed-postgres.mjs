@@ -227,7 +227,7 @@ async function main() {
     await insertRows(
       client,
       "fact_product_telemetry",
-      ["session_id", "device", "rage_clicks", "dead_clicks", "events", "linked_response_id"],
+      ["session_id", "device", "cohort_key", "rage_clicks", "dead_clicks", "events", "linked_response_id"],
       telemetry,
       { events: "text[]" },
     );

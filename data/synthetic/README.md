@@ -12,9 +12,9 @@ bun scripts/verify-synthetic-quotas.ts
 DATABASE_URL=postgres://ellyra:ellyra_dev_pw@127.0.0.1:5432/ellyra_pulse bun scripts/seed-postgres.mjs
 ```
 
-`data/synthetic/generated/` is gitignored. Apply `db/migrations/0001_init.sql` and
-`db/migrations/0002_synthetic_metrics.sql` before seeding (`scripts/setup-postgres.sh` does both
-on a fresh database).
+`data/synthetic/generated/` is gitignored. Apply `db/migrations/0001_init.sql`,
+`db/migrations/0002_synthetic_metrics.sql`, and `db/migrations/0003_telemetry_cohort.sql`
+before seeding (`scripts/setup-postgres.sh` does all three on a fresh database).
 
 Edit the quotas in `src/backend/synthetic/quotas.ts` rather than the JSONL. The verifier exits
 non-zero when a published rate misses. Headline counts are assigned, not drawn with `Math.random`.

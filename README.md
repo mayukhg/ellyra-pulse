@@ -99,8 +99,8 @@ Not yet wired to the backend below.
   writes.
 
 **Database schema** (`db/migrations/`) — the canonical schema, runnable via
-`scripts/setup-postgres.sh` (creates the role/db and applies `0001_init.sql` and
-`0002_synthetic_metrics.sql`) and seedable with the synthetic dataset via
+`scripts/setup-postgres.sh` (creates the role/db and applies `0001_init.sql`,
+`0002_synthetic_metrics.sql`, and `0003_telemetry_cohort.sql`) and seedable with the synthetic dataset via
 `scripts/seed-postgres.mjs`.
 
 **Synthetic dataset** — a seeded quota corpus (`src/backend/synthetic/buildCorpus.ts`) covering

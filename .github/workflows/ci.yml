@@ -37,6 +37,7 @@ jobs:
         run: |
           PGPASSWORD=ellyra_dev_pw psql -h 127.0.0.1 -U ellyra -d ellyra_pulse --set ON_ERROR_STOP=1 -f db/migrations/0001_init.sql
           PGPASSWORD=ellyra_dev_pw psql -h 127.0.0.1 -U ellyra -d ellyra_pulse --set ON_ERROR_STOP=1 -f db/migrations/0002_synthetic_metrics.sql
+          PGPASSWORD=ellyra_dev_pw psql -h 127.0.0.1 -U ellyra -d ellyra_pulse --set ON_ERROR_STOP=1 -f db/migrations/0003_telemetry_cohort.sql
         env:
           PGPASSWORD: ellyra_dev_pw
 

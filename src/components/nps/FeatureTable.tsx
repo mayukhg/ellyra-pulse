@@ -1,13 +1,14 @@
 import { ArrowDownRight, ArrowUpRight, ShieldAlert } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { featureRows, type Feature } from "@/lib/nps-data";
+import type { Feature } from "@/lib/nps-data";
+import { getLiveDashboard } from "@/lib/live-dashboard";
 import { MetricTooltip, SectionHeading } from "./shared";
 
 const columnHelp = {
   Feature: "The Ellyra product touchpoint associated with the survey response.",
   NPS: "Feature-specific NPS: percentage of Promoters minus percentage of Detractors, from −100 to +100.",
-  MoM: "Point change in feature NPS versus the preceding calendar month.",
+  MoM: "Point change in feature NPS versus the preceding window of the same length.",
   Responses: "Count of valid NPS responses attributed to this feature in the selected period.",
   Distribution: "Percent split of Promoters (9–10), Passives (7–8), and Detractors (0–6), shown in that order.",
   "Top driver": "The highest-impact recurring ABSA theme associated with this feature’s score.",
@@ -21,6 +22,7 @@ export function FeatureTable({
   selected: Feature | null;
   onSelect: (f: Feature | null) => void;
 }) {
+  const featureRows = getLiveDashboard().features;
   return (
     <Card className="gap-0 overflow-hidden p-0">
       <div className="border-b border-border p-5">
@@ -77,7 +79,8 @@ export function FeatureTable({
                     </span>
                   </td>
                   <td className="px-5 py-4 font-mono text-base font-semibold text-foreground">
-                    +{r.nps}
+                    {r.nps > 0 ? "+" : ""}
+                    {r.nps}
                   </td>
                   <td className="px-5 py-4">
                     <span

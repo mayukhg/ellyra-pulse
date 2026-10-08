@@ -13,7 +13,8 @@ import {
 import { AlertOctagon } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { quadrantPoints, type Feature, type QuadrantPoint } from "@/lib/nps-data";
+import type { Feature, QuadrantPoint } from "@/lib/nps-data";
+import { getLiveDashboard } from "@/lib/live-dashboard";
 import { Chip, MetricTooltip, SectionHeading } from "./shared";
 
 const VOL_MID = 300;
@@ -21,7 +22,7 @@ const IMPACT_MID = 0;
 
 function quadrantOf(p: QuadrantPoint) {
   const highVol = p.volume >= VOL_MID;
-  const highImpact = Math.abs(p.impact) >= 4;
+  const highImpact = p.volume > 0 && Math.abs(p.impact) >= p.volume * 0.4;
   if (highVol && highImpact) return "Systemic priority";
   if (highVol && !highImpact) return "Usability polish";
   if (!highVol && highImpact) return "Critical / rare trust failure";
@@ -37,7 +38,16 @@ export function QuadrantScatter({
   selected: QuadrantPoint | null;
   onSelect: (p: QuadrantPoint | null) => void;
 }) {
-  const data = quadrantPoints.filter((p) => !featureFilter || p.feature === featureFilter);
+  const data = getLiveDashboard().quadrant.filter(
+    (p) => !featureFilter || p.feature === featureFilter,
+  );
+  const impacts = data.map((point) => point.impact);
+  const volumes = data.map((point) => point.volume);
+  const low = Math.min(0, ...impacts);
+  const high = Math.max(0, ...impacts);
+  const span = Math.max(high - low, 1);
+  const pad = Math.ceil(span * 0.08);
+  const volumeMax = Math.max(1000, ...volumes);
 
   return (
     <Card className="gap-0 p-5">
@@ -56,8 +66,8 @@ export function QuadrantScatter({
             <span className="inline-flex items-center gap-1">
               impact on net sentiment
               <MetricTooltip label="Impact on net sentiment axis">
-                Estimated point contribution to aggregate sentiment after controlling for feature
-                and cohort. Negative values reduce sentiment; positive values improve it.
+                Sum of aspect polarity in the selected period. Negative totals reduce sentiment;
+                positive totals improve it.
               </MetricTooltip>
             </span>
             <span>Click a dot to filter verbatims.</span>
@@ -77,13 +87,13 @@ export function QuadrantScatter({
       <div className="mt-4 grid gap-4 lg:grid-cols-[1.6fr_1fr]">
         <div className="relative h-[380px] rounded-lg border border-border bg-canvas/60 p-2">
           <ResponsiveContainer width="100%" height="100%">
-            <ScatterChart margin={{ top: 12, right: 16, bottom: 22, left: 4 }}>
+            <ScatterChart margin={{ top: 12, right: 16, bottom: 22, left: 28 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis
                 type="number"
                 dataKey="volume"
                 name="Feedback volume"
-                domain={[0, 1000]}
+                domain={[0, volumeMax]}
                 tickLine={false}
                 fontSize={11}
                 stroke="var(--muted-foreground)"
@@ -99,7 +109,7 @@ export function QuadrantScatter({
                 type="number"
                 dataKey="impact"
                 name="Impact on net sentiment"
-                domain={[-11, 8]}
+                domain={[low - pad, high + pad]}
                 tickLine={false}
                 fontSize={11}
                 stroke="var(--muted-foreground)"

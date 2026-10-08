@@ -25,6 +25,7 @@ import {
   type Feature,
   type Verbatim,
 } from "@/lib/nps-data";
+import { getLiveDashboard } from "@/lib/live-dashboard";
 import { Chip, MetricTooltip, SectionHeading, TierPill, redactText } from "./shared";
 
 type Polarity = "all" | "positive" | "negative";
@@ -84,6 +85,7 @@ export function VerbatimHub({
   const [sla, setSla] = useState<SlaFilter>("all");
   const [open, setOpen] = useState<Verbatim | null>(null);
 
+  const operations = getLiveDashboard().operations;
   const effFeature = themeFilter?.feature ?? featureFilter;
   const effAspect = themeFilter?.aspect ?? aspectFilter;
 
@@ -122,8 +124,14 @@ export function VerbatimHub({
               first recorded human outreach. P0 pages use a separate 15-minute response target.
             </MetricTooltip>
           </div>
-          <div className="mt-1 font-mono text-2xl font-semibold text-foreground">3h 18m</div>
-          <div className="mt-0.5 text-xs text-promoter">−42m vs prior period</div>
+          <div className="mt-1 font-mono text-2xl font-semibold text-foreground">
+            {operations.medianLabel}
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {operations.medianDeltaMinutes === null
+              ? "No prior window"
+              : `${operations.medianDeltaMinutes > 0 ? "+" : ""}${operations.medianDeltaMinutes}m vs prior window`}
+          </div>
         </div>
         <div className="rounded-lg border border-border bg-muted/20 p-3">
           <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
@@ -133,8 +141,14 @@ export function VerbatimHub({
               Resolved status. Open, Contacted, and Escalated tickets remain in the denominator.
             </MetricTooltip>
           </div>
-          <div className="mt-1 font-mono text-2xl font-semibold text-foreground">74%</div>
-          <div className="mt-0.5 text-xs text-promoter">+6 pts vs prior period</div>
+          <div className="mt-1 font-mono text-2xl font-semibold text-foreground">
+            {operations.closeRate}%
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {operations.closeRateDelta === null
+              ? "No prior window"
+              : `${operations.closeRateDelta > 0 ? "+" : ""}${operations.closeRateDelta} pts vs prior window`}
+          </div>
         </div>
       </div>
 

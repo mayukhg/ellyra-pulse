@@ -391,6 +391,23 @@ function checkTelemetry(
   ) {
     errors.push("telemetry links to a missing response");
   }
+  const cohortKeys = new Set(COHORTS.map((cohort) => cohort.cohortKey));
+  if (corpus.telemetry.some((session) => !cohortKeys.has(session.cohortKey))) {
+    errors.push("telemetry session is missing a known cohort");
+  }
+  for (const cohort of COHORTS) {
+    const rows = corpus.telemetry.filter((session) => session.cohortKey === cohort.cohortKey);
+    const finished = rows.filter((session) => session.events.includes("survey_completed")).length;
+    if (rows.length === 0) errors.push(`${cohort.cohortKey} has no telemetry sessions`);
+    if (finished === 0) errors.push(`${cohort.cohortKey} has no survey completions`);
+    if (finished >= rows.length) errors.push(`${cohort.cohortKey} funnel does not drop`);
+  }
+  for (const device of ["desktop", "mobile", "tablet"] as const) {
+    const finished = corpus.telemetry.filter(
+      (session) => session.device === device && session.events.includes("survey_completed"),
+    ).length;
+    if (finished === 0) errors.push(`${device} has no survey completions`);
+  }
 }
 
 function checkPhi(corpus: Corpus, errors: string[]) {

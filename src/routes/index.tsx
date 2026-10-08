@@ -12,6 +12,7 @@ import { VerbatimHub } from "@/components/nps/VerbatimHub";
 import { Simulator } from "@/components/nps/Simulator";
 import { Chip } from "@/components/nps/shared";
 import type { Aspect, Feature, QuadrantPoint } from "@/lib/nps-data";
+import { getLiveDashboard } from "@/lib/live-dashboard";
 import { trackHotjarEvent } from "@/lib/hotjar";
 import { trackMixpanelEvent } from "@/lib/mixpanel";
 
@@ -42,6 +43,7 @@ function Index() {
   const [aspect, setAspectState] = useState<Aspect | null>(null);
   const [theme, setTheme] = useState<QuadrantPoint | null>(null);
   const [tab, setTabState] = useState("scorecard");
+  const live = getLiveDashboard();
 
   const setFeature = (f: Feature | null) => {
     if (f) {
@@ -97,8 +99,10 @@ function Index() {
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <Chip tone="clinical">Q3 2026 · rolling 30 days</Chip>
-            <Chip tone="neutral">PHI redaction: enforced</Chip>
-            <Chip tone="safety">3 open P0 safety escalations</Chip>
+            <Chip tone="neutral">
+              PHI leaks {live.operations.phiLeaks} · quarantined {live.operations.quarantines}
+            </Chip>
+            <Chip tone="safety">{live.operations.openP0} open P0 safety escalations</Chip>
           </div>
         </div>
       </header>

@@ -12,8 +12,26 @@ import {
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, HeartPulse, ShieldCheck } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { headline, medicalKpis, npsTrend } from "@/lib/nps-data";
+import { getLiveDashboard } from "@/lib/live-dashboard";
 import { MetricTooltip, SectionHeading } from "./shared";
+
+function frustrationBand(value: number) {
+  if (value >= 30) return { label: "red", className: "text-safety" };
+  if (value >= 15) return { label: "amber", className: "text-passive" };
+  return { label: "healthy", className: "text-promoter" };
+}
+
+function FrustrationShare({ label, value }: { label: string; value: number }) {
+  const band = frustrationBand(value);
+  return (
+    <span>
+      {label}{" "}
+      <span className={cn("font-medium", band.className)}>
+        {value}% {band.label}
+      </span>
+    </span>
+  );
+}
 
 function Delta({ value, suffix = "" }: { value: number; suffix?: string }) {
   const up = value >= 0;
@@ -35,6 +53,7 @@ function Delta({ value, suffix = "" }: { value: number; suffix?: string }) {
 export function Scorecard() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  const { headline, medicalKpis, trend, operations } = getLiveDashboard();
   const dist = [
     { label: "Promoters (9-10)", value: headline.promoters, cls: "bg-promoter" },
     { label: "Passives (7-8)", value: headline.passives, cls: "bg-passive" },
@@ -120,12 +139,12 @@ export function Scorecard() {
         <Card className="gap-0 p-6 lg:col-span-2">
           <SectionHeading
             title="Relational vs. transactional trend"
-            description="Rolling 7-month NPS by survey type"
+            description="Measured by window. Aug is 23 Jul–21 Aug; Sep is the current 22 Aug–20 Sep window."
           />
           <div className="mt-4 h-[248px]">
             {mounted && (
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={npsTrend} margin={{ left: -18, right: 8, top: 8 }}>
+              <AreaChart data={trend} margin={{ left: -18, right: 8, top: 8 }}>
                 <defs>
                   <linearGradient id="gRel" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="var(--clinical)" stopOpacity={0.35} />
@@ -248,6 +267,100 @@ export function Scorecard() {
           })}
         </div>
       </div>
+
+      <div className="grid gap-4 lg:grid-cols-4">
+        <Card className="gap-0 p-5">
+          <div className="text-xs font-medium text-muted-foreground">Median first contact</div>
+          <div className="mt-2 font-mono text-2xl font-semibold">{operations.medianLabel}</div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {operations.medianDeltaMinutes === null
+              ? "No prior window"
+              : `${operations.medianDeltaMinutes > 0 ? "+" : ""}${operations.medianDeltaMinutes}m vs prior window`}
+          </p>
+        </Card>
+        <Card className="gap-0 p-5">
+          <div className="text-xs font-medium text-muted-foreground">Feedback close rate</div>
+          <div className="mt-2 font-mono text-2xl font-semibold">{operations.closeRate}%</div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {operations.resolved.toLocaleString()} of {operations.tickets.toLocaleString()} tickets
+            {operations.closeRateDelta === null
+              ? ""
+              : ` · ${operations.closeRateDelta > 0 ? "+" : ""}${operations.closeRateDelta} pts`}
+          </p>
+        </Card>
+        <Card className="gap-0 p-5">
+          <div className="text-xs font-medium text-muted-foreground">Closed-loop SLAs</div>
+          <div className="mt-2 font-mono text-sm font-semibold">
+            P0 ≤15m {operations.p0Within15Pct ?? "—"}%
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {operations.p0OnTime} of {operations.p0Count} clinical pages · detractor ≤24h{" "}
+            {operations.detractorWithin24Pct ?? "—"}% ({operations.csOnTime} of {operations.csCount})
+          </p>
+        </Card>
+        <Card className="gap-0 p-5">
+          <div className="text-xs font-medium text-muted-foreground">Frustration & PHI</div>
+          <div className="mt-2 text-sm">
+            <FrustrationShare label="Rage/dead clicks" value={operations.frustration.overall} />
+          </div>
+          <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <FrustrationShare label="Desktop" value={operations.frustration.desktop} />
+            <FrustrationShare label="Mobile" value={operations.frustration.mobile} />
+            <FrustrationShare label="Tablet" value={operations.frustration.tablet} />
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Amber from 15%, red from 30%. Persisted PHI leaks {operations.phiLeaks}. Quarantined{" "}
+            {operations.quarantines}.
+          </p>
+        </Card>
+      </div>
+
+      <Card className="gap-0 p-5">
+        <SectionHeading
+          title="Survey funnel by cohort"
+          description="Product telemetry sample. A drop is the sessions lost since the previous step."
+        />
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="text-muted-foreground">
+                <th className="py-2 pr-4 font-medium">Cohort</th>
+                {operations.funnel.map((step) => (
+                  <th key={step.step} className="py-2 pr-4 font-medium">
+                    {step.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {operations.funnelByCohort.map((cohort) => (
+                <tr key={cohort.cohortKey} className="border-t border-border">
+                  <td className="py-2 pr-4 font-medium text-foreground">{cohort.cohortName}</td>
+                  {cohort.steps.map((step) => (
+                    <td key={step.step} className="py-2 pr-4 font-mono text-foreground">
+                      {step.count.toLocaleString()}
+                      {step.drop > 0 && (
+                        <span className="ml-1 text-detractor">-{step.drop.toLocaleString()}</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              <tr className="border-t border-border">
+                <td className="py-2 pr-4 font-medium text-foreground">All sessions</td>
+                {operations.funnel.map((step) => (
+                  <td key={step.step} className="py-2 pr-4 font-mono text-foreground">
+                    {step.count.toLocaleString()}
+                    {step.drop > 0 && (
+                      <span className="ml-1 text-detractor">-{step.drop.toLocaleString()}</span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 }

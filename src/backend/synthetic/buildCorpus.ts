@@ -157,6 +157,7 @@ export interface CorpusOverride {
 export interface CorpusTelemetry {
   sessionId: string;
   device: "desktop" | "mobile" | "tablet";
+  cohortKey: CohortKey;
   rageClicks: number;
   deadClicks: number;
   events: string[];
@@ -919,39 +920,90 @@ function buildAudits(seed: number, responses: CorpusResponse[]): CorpusAudit[] {
   return audits;
 }
 
+/** Integer shares of `total` that follow `weights` and sum back to `total`. */
+function largestRemainder(total: number, weights: number[]): number[] {
+  const weightSum = weights.reduce((sum, weight) => sum + weight, 0);
+  if (weightSum === 0) return weights.map(() => 0);
+  const exact = weights.map((weight) => (total * weight) / weightSum);
+  const counts = exact.map((value) => Math.floor(value));
+  let leftover = total - counts.reduce((sum, count) => sum + count, 0);
+  const order = exact
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+  for (const entry of order) {
+    if (leftover === 0) break;
+    counts[entry.index] = (counts[entry.index] ?? 0) + 1;
+    leftover -= 1;
+  }
+  return counts;
+}
+
 function buildTelemetry(seed: number, responses: CorpusResponse[]): CorpusTelemetry[] {
   const demoResponses = responses.filter((response) => response.bucketId === "demo");
-  const linked = demoResponses.slice(0, TELEMETRY.completed);
-  if (linked.length !== TELEMETRY.completed) throw new Error("Demo window lacks telemetry links");
-  const devices: Array<CorpusTelemetry["device"]> = [
-    ...Array.from({ length: TELEMETRY.desktop }, () => "desktop" as const),
-    ...Array.from({ length: TELEMETRY.mobile }, () => "mobile" as const),
-    ...Array.from({ length: TELEMETRY.tablet }, () => "tablet" as const),
+  const cohortKeys = COHORTS.map((cohort) => cohort.cohortKey);
+  const byCohort = new Map<CohortKey, CorpusResponse[]>(cohortKeys.map((key) => [key, []]));
+  for (const response of demoResponses) byCohort.get(response.cohortKey)?.push(response);
+
+  const devices: Array<{
+    device: CorpusTelemetry["device"];
+    count: number;
+    frustrated: number;
+  }> = [
+    { device: "desktop", count: TELEMETRY.desktop, frustrated: TELEMETRY.desktopFrustrated },
+    { device: "mobile", count: TELEMETRY.mobile, frustrated: TELEMETRY.mobileFrustrated },
+    { device: "tablet", count: TELEMETRY.tablet, frustrated: TELEMETRY.tabletFrustrated },
   ];
-  return devices.map((device, index) => {
-    const frustrated =
-      (device === "desktop" && index < TELEMETRY.desktopFrustrated) ||
-      (device === "mobile" &&
-        index >= TELEMETRY.desktop &&
-        index < TELEMETRY.desktop + TELEMETRY.mobileFrustrated) ||
-      (device === "tablet" &&
-        index >= TELEMETRY.desktop + TELEMETRY.mobile &&
-        index < TELEMETRY.desktop + TELEMETRY.mobile + TELEMETRY.tabletFrustrated);
-    const link = index < TELEMETRY.completed ? linked[index] : undefined;
-    const events = [
-      "session_started",
-      "guidance_shown",
-      "disclaimer_seen",
-      "survey_offered",
-      ...(link ? ["survey_completed"] : []),
-    ];
-    return {
-      sessionId: link?.sessionId ?? stableId(seed, "telemetry", index),
-      device,
-      rageClicks: frustrated && device !== "tablet" ? 2 : 0,
-      deadClicks: frustrated ? 1 : 0,
-      events,
-      linkedResponseId: link?.responseId ?? null,
-    };
+  const completionsByDevice = largestRemainder(
+    TELEMETRY.completed,
+    devices.map((device) => device.count),
+  );
+  const cursor = new Map<CohortKey, number>(cohortKeys.map((key) => [key, 0]));
+  const rows: CorpusTelemetry[] = [];
+  let index = 0;
+
+  devices.forEach((spec, deviceIndex) => {
+    const perCohort = largestRemainder(
+      completionsByDevice[deviceIndex] ?? 0,
+      cohortKeys.map(() => 1),
+    );
+    const seen = new Map<CohortKey, number>(cohortKeys.map((key) => [key, 0]));
+    for (let offset = 0; offset < spec.count; offset += 1) {
+      const cohortKey = cohortKeys[offset % cohortKeys.length];
+      if (!cohortKey) throw new Error("Missing telemetry cohort");
+      const seenInCohort = seen.get(cohortKey) ?? 0;
+      seen.set(cohortKey, seenInCohort + 1);
+      const cohortIndex = offset % cohortKeys.length;
+      const completed = seenInCohort < (perCohort[cohortIndex] ?? 0);
+      const frustrated = offset < spec.frustrated;
+      let link: CorpusResponse | undefined;
+      if (completed) {
+        const pool = byCohort.get(cohortKey) ?? [];
+        const at = cursor.get(cohortKey) ?? 0;
+        link = pool[at];
+        if (!link) throw new Error(`Not enough ${cohortKey} responses for telemetry links`);
+        cursor.set(cohortKey, at + 1);
+      }
+      rows.push({
+        sessionId: link?.sessionId ?? stableId(seed, "telemetry", index),
+        device: spec.device,
+        cohortKey,
+        rageClicks: frustrated && spec.device !== "tablet" ? 2 : 0,
+        deadClicks: frustrated ? 1 : 0,
+        events: [
+          "session_started",
+          "guidance_shown",
+          "disclaimer_seen",
+          "survey_offered",
+          ...(link ? ["survey_completed"] : []),
+        ],
+        linkedResponseId: link?.responseId ?? null,
+      });
+      index += 1;
+    }
   });
+
+  if (rows.filter((row) => row.linkedResponseId).length !== TELEMETRY.completed) {
+    throw new Error("Telemetry completions do not match the quota");
+  }
+  return rows;
 }

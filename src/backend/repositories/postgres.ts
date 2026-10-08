@@ -22,9 +22,8 @@ import { route as routeDecision } from "../ingestion/routing";
 import { isAllowedTransition } from "../ticketRules";
 import { store } from "../store"; // realtime pub/sub only — process-local regardless of storage backend
 import type { IngestOutcome, Repository, TicketSnapshot, UpdateTicketResult } from "./types";
-
-const QUADRANT_HIGH_VOLUME = 300;
-const QUADRANT_HIGH_IMPACT = 4;
+import { deltaOf, previousFilters, trustStatus } from "../synthetic/dashboardMetrics";
+import { BUCKETS, MISMATCH_CODES, npsOf, type BucketQuota } from "../synthetic/quotas";
 
 function distribution(promoters: number, passives: number, detractors: number): NpsDistribution {
   const total = promoters + passives + detractors || 1;
@@ -39,9 +38,7 @@ function distribution(promoters: number, passives: number, detractors: number): 
 }
 
 function npsFrom(promoters: number, passives: number, detractors: number): number {
-  const total = promoters + passives + detractors;
-  if (total === 0) return 0;
-  return Math.round((promoters / total) * 100 - (detractors / total) * 100);
+  return npsOf(promoters, detractors, promoters + passives + detractors);
 }
 
 /** Builds the shared WHERE clause + params for filtering fact_nps_response by AnalyticsFilters. */
@@ -75,139 +72,300 @@ function buildFilterClause(filters: AnalyticsFilters, startParamIndex: number) {
   return { clause: conditions.join(" AND "), params, nextIndex: i };
 }
 
+const TREND_MONTH: Record<BucketQuota["id"], string> = {
+  mar: "Mar",
+  apr: "Apr",
+  may: "May",
+  jun: "Jun",
+  jul_early: "Jul",
+  prior: "Aug",
+  demo: "Sep",
+};
+
+const TREND_CASE = `CASE ${BUCKETS.map(
+  (bucket) =>
+    `WHEN received_at >= '${bucket.from}'::timestamptz AND received_at < '${bucket.to}'::timestamptz THEN '${TREND_MONTH[bucket.id]}'`,
+).join(" ")} END`;
+
+const MISMATCH_ARRAY = `ARRAY[${MISMATCH_CODES.map((code) => `'${code}'`).join(",")}]::text[]`;
+
+function rateOrNull(numerator: number, denominator: number, digits: number): number | null {
+  if (denominator === 0) return null;
+  return Number(((numerator / denominator) * 100).toFixed(digits));
+}
+
+async function measureWindow(pool: Pool, filters: AnalyticsFilters) {
+  const { clause, params } = buildFilterClause(filters, 1);
+  const scope = [filters.from, filters.to, filters.feature ?? null, filters.cohort ?? null];
+  const {
+    rows: [agg],
+  } = await pool.query(
+    `SELECT
+       count(*) AS total,
+       count(*) FILTER (WHERE nps_tier = 'promoter') AS promoters,
+       count(*) FILTER (WHERE nps_tier = 'passive') AS passives,
+       count(*) FILTER (WHERE nps_tier = 'detractor') AS detractors,
+       count(*) FILTER (WHERE survey_type = 'relational' AND nps_tier = 'promoter') AS rel_p,
+       count(*) FILTER (WHERE survey_type = 'relational' AND nps_tier = 'detractor') AS rel_d,
+       count(*) FILTER (WHERE survey_type = 'relational') AS rel_total,
+       count(*) FILTER (WHERE survey_type = 'transactional' AND nps_tier = 'promoter') AS tx_p,
+       count(*) FILTER (WHERE survey_type = 'transactional' AND nps_tier = 'detractor') AS tx_d,
+       count(*) FILTER (WHERE survey_type = 'transactional') AS tx_total,
+       count(*) FILTER (WHERE anxiety_pair_valid) AS pairs,
+       count(*) FILTER (WHERE anxiety_pair_valid AND anxiety_post < anxiety_pre) AS improved,
+       count(*) FILTER (WHERE comprehension_applicable) AS answers,
+       count(*) FILTER (WHERE comprehension_applicable AND understood_without_search) AS understood,
+       count(*) FILTER (WHERE disclaimer_exposed) AS exposed,
+       count(*) FILTER (WHERE disclaimer_exposed AND disclaimer_polarity < 0) AS fatigued
+     FROM fact_nps_response WHERE ${clause}`,
+    params,
+  );
+  const {
+    rows: [sessions],
+  } = await pool.query(
+    `SELECT
+       count(*) FILTER (WHERE eligible_clinical) AS eligible_sessions,
+       count(*) FILTER (WHERE eligible_clinical AND mismatch_codes && ${MISMATCH_ARRAY}) AS mismatch_sessions
+     FROM fact_clinical_session s
+     WHERE s.started_at >= $1::timestamptz AND s.started_at < $2::timestamptz
+       AND ($3::text IS NULL OR s.feature_key = $3)
+       AND (
+         $4::text IS NULL
+         OR s.user_cohort_id = (SELECT user_cohort_id FROM dim_user_cohort WHERE cohort_key = $4)
+       )`,
+    scope,
+  );
+  const {
+    rows: [invites],
+  } = await pool.query(
+    `SELECT count(*) FILTER (WHERE i.eligible) AS eligible
+     FROM fact_survey_invitation i
+     LEFT JOIN fact_clinical_session s ON s.session_id = i.session_id
+     WHERE i.delivered_at >= $1::timestamptz AND i.delivered_at < $2::timestamptz
+       AND ($3::text IS NULL OR i.feature_key = $3)
+       AND (
+         $4::text IS NULL
+         OR s.user_cohort_id = (SELECT user_cohort_id FROM dim_user_cohort WHERE cohort_key = $4)
+       )`,
+    scope,
+  );
+  const {
+    rows: [tickets],
+  } = await pool.query(
+    `WITH scoped AS (
+       SELECT t.*
+       FROM fact_closed_loop_ticket t
+       LEFT JOIN fact_clinical_session s ON s.session_id = t.session_id
+       WHERE t.created_at >= $1::timestamptz AND t.created_at < $2::timestamptz
+         AND ($3::text IS NULL OR s.feature_key = $3)
+         AND (
+           $4::text IS NULL
+           OR s.user_cohort_id = (SELECT user_cohort_id FROM dim_user_cohort WHERE cohort_key = $4)
+         )
+     )
+     SELECT
+       count(*) AS tickets,
+       count(*) FILTER (WHERE status = 'resolved') AS resolved,
+       count(*) FILTER (WHERE priority = 'p0' AND status = 'open') AS open_p0
+     FROM scoped`,
+    scope,
+  );
+  const {
+    rows: [medianAgg],
+  } = await pool.query(
+    `WITH delays AS (
+       SELECT EXTRACT(EPOCH FROM (t.first_contact_at - t.created_at)) AS delay
+       FROM fact_closed_loop_ticket t
+       LEFT JOIN fact_clinical_session s ON s.session_id = t.session_id
+       WHERE t.first_contact_at IS NOT NULL
+         AND t.created_at >= $1::timestamptz AND t.created_at < $2::timestamptz
+         AND ($3::text IS NULL OR s.feature_key = $3)
+         AND (
+           $4::text IS NULL
+           OR s.user_cohort_id = (SELECT user_cohort_id FROM dim_user_cohort WHERE cohort_key = $4)
+         )
+     ),
+     ordered AS (
+       SELECT delay, row_number() OVER (ORDER BY delay) AS rn, count(*) OVER () AS n FROM delays
+     )
+     SELECT delay FROM ordered WHERE rn = floor(n / 2) + 1`,
+    scope,
+  );
+  const { rows: trendRows } = await pool.query(
+    `SELECT ${TREND_CASE} AS period,
+       count(*) FILTER (WHERE survey_type = 'relational' AND nps_tier = 'promoter') AS rel_p,
+       count(*) FILTER (WHERE survey_type = 'relational' AND nps_tier = 'detractor') AS rel_d,
+       count(*) FILTER (WHERE survey_type = 'relational') AS rel_total,
+       count(*) FILTER (WHERE survey_type = 'transactional' AND nps_tier = 'promoter') AS tx_p,
+       count(*) FILTER (WHERE survey_type = 'transactional' AND nps_tier = 'detractor') AS tx_d,
+       count(*) FILTER (WHERE survey_type = 'transactional') AS tx_total,
+       min(received_at) AS first_at
+     FROM fact_nps_response WHERE ${clause}
+     GROUP BY 1
+     HAVING ${TREND_CASE} IS NOT NULL
+     ORDER BY min(received_at)`,
+    params,
+  );
+  const total = Number(agg.total);
+  const promoters = Number(agg.promoters);
+  const passives = Number(agg.passives);
+  const detractors = Number(agg.detractors);
+  const relTotal = Number(agg.rel_total);
+  const txTotal = Number(agg.tx_total);
+  return {
+    total,
+    promoters,
+    passives,
+    detractors,
+    relational: npsFrom(
+      Number(agg.rel_p),
+      relTotal - Number(agg.rel_p) - Number(agg.rel_d),
+      Number(agg.rel_d),
+    ),
+    transactional: npsFrom(
+      Number(agg.tx_p),
+      txTotal - Number(agg.tx_p) - Number(agg.tx_d),
+      Number(agg.tx_d),
+    ),
+    overall: npsFrom(promoters, passives, detractors),
+    distribution: distribution(promoters, passives, detractors),
+    eligibleInvitations: Number(invites.eligible),
+    pairs: Number(agg.pairs),
+    improved: Number(agg.improved),
+    answers: Number(agg.answers),
+    understood: Number(agg.understood),
+    exposed: Number(agg.exposed),
+    fatigued: Number(agg.fatigued),
+    eligibleSessions: Number(sessions.eligible_sessions),
+    mismatchSessions: Number(sessions.mismatch_sessions),
+    tickets: Number(tickets.tickets),
+    resolved: Number(tickets.resolved),
+    openP0: Number(tickets.open_p0),
+    medianSeconds:
+      medianAgg?.delay === undefined || medianAgg?.delay === null
+        ? null
+        : Math.round(Number(medianAgg.delay)),
+    trend: trendRows.map((row) => ({
+      period: String(row.period),
+      relational: npsFrom(
+        Number(row.rel_p),
+        Number(row.rel_total) - Number(row.rel_p) - Number(row.rel_d),
+        Number(row.rel_d),
+      ),
+      transactional: npsFrom(
+        Number(row.tx_p),
+        Number(row.tx_total) - Number(row.tx_p) - Number(row.tx_d),
+        Number(row.tx_d),
+      ),
+    })),
+  };
+}
+
 export function createPostgresRepository(pool: Pool): Repository {
   return {
     kind: "postgres",
 
     async getExecutiveMetrics(filters: AnalyticsFilters): Promise<ExecutiveMetricsResponse> {
-      const { clause, params } = buildFilterClause(filters, 1);
-
-      const {
-        rows: [agg],
-      } = await pool.query(
-        `SELECT
-           count(*) AS total,
-           count(*) FILTER (WHERE response_eligible) AS eligible,
-           count(*) FILTER (WHERE nps_tier = 'promoter') AS promoters,
-           count(*) FILTER (WHERE nps_tier = 'passive') AS passives,
-           count(*) FILTER (WHERE nps_tier = 'detractor') AS detractors,
-           count(*) FILTER (WHERE survey_type = 'relational' AND nps_tier = 'promoter') AS rel_p,
-           count(*) FILTER (WHERE survey_type = 'relational' AND nps_tier = 'detractor') AS rel_d,
-           count(*) FILTER (WHERE survey_type = 'relational') AS rel_total,
-           count(*) FILTER (WHERE survey_type = 'transactional' AND nps_tier = 'promoter') AS tx_p,
-           count(*) FILTER (WHERE survey_type = 'transactional' AND nps_tier = 'detractor') AS tx_d,
-           count(*) FILTER (WHERE survey_type = 'transactional') AS tx_total,
-           count(*) FILTER (WHERE safety_reason_codes @> ARRAY['contradicts_clinician']) AS hallucination_flagged
-         FROM fact_nps_response WHERE ${clause}`,
-        params,
-      );
-
-      const total = Number(agg.total);
-      const promoters = Number(agg.promoters);
-      const passives = Number(agg.passives);
-      const detractors = Number(agg.detractors);
-      const relTotal = Number(agg.rel_total);
-      const txTotal = Number(agg.tx_total);
-
-      const {
-        rows: [p0],
-      } = await pool.query(
-        `SELECT count(*) AS open_p0 FROM fact_closed_loop_ticket WHERE status != 'resolved' AND priority = 'p0'`,
-      );
-      const {
-        rows: [closeAgg],
-      } = await pool.query(
-        `SELECT count(*) AS closed_period, count(*) FILTER (WHERE status = 'resolved') AS resolved_period
-         FROM fact_closed_loop_ticket WHERE created_at >= $1::timestamptz`,
-        [filters.from],
-      );
-      const {
-        rows: [medianAgg],
-      } = await pool.query(
-        `SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (first_contact_at - created_at))) AS median_seconds
-         FROM fact_closed_loop_ticket WHERE first_contact_at IS NOT NULL`,
-      );
-
-      const closedPeriod = Number(closeAgg.closed_period);
-      const resolvedPeriod = Number(closeAgg.resolved_period);
+      const current = await measureWindow(pool, filters);
+      const prior = await measureWindow(pool, previousFilters(filters));
+      const priorNps = (value: number, sample: number) => (sample === 0 ? null : value);
+      const responseRate = rateOrNull(current.total, current.eligibleInvitations, 1) ?? 0;
+      const priorResponseRate = rateOrNull(prior.total, prior.eligibleInvitations, 1);
+      const ard = rateOrNull(current.improved, current.pairs, 1) ?? 0;
+      const priorArd = rateOrNull(prior.improved, prior.pairs, 1);
+      const ccs = rateOrNull(current.understood, current.answers, 1) ?? 0;
+      const priorCcs = rateOrNull(prior.understood, prior.answers, 1);
+      const hfr = rateOrNull(current.mismatchSessions, current.eligibleSessions, 2) ?? 0;
+      const priorHfr = rateOrNull(prior.mismatchSessions, prior.eligibleSessions, 2);
+      const dfi = rateOrNull(current.fatigued, current.exposed, 1) ?? 0;
+      const priorDfi = rateOrNull(prior.fatigued, prior.exposed, 1);
+      const closeRate = current.tickets
+        ? Number(((current.resolved / current.tickets) * 100).toFixed(1))
+        : 0;
+      const priorClose = prior.tickets
+        ? Number(((prior.resolved / prior.tickets) * 100).toFixed(1))
+        : null;
 
       return {
         generatedAt: new Date().toISOString(),
         period: { from: filters.from, to: filters.to, timezone: filters.timezone },
-        sample: { responses: total, eligibleSurveys: Number(agg.eligible), suppressed: total < 20 },
+        sample: {
+          responses: current.total,
+          eligibleSurveys: current.eligibleInvitations,
+          suppressed: current.total < 20,
+        },
         nps: {
           overall: {
-            value: npsFrom(promoters, passives, detractors),
-            previousValue: null,
-            delta: null,
+            value: current.overall,
+            previousValue: priorNps(prior.overall, prior.total),
+            delta: deltaOf(current.overall, priorNps(prior.overall, prior.total), 0),
           },
           relational: {
-            value: npsFrom(
-              Number(agg.rel_p),
-              relTotal - Number(agg.rel_p) - Number(agg.rel_d),
-              Number(agg.rel_d),
-            ),
-            previousValue: null,
-            delta: null,
+            value: current.relational,
+            previousValue: priorNps(prior.relational, prior.total),
+            delta: deltaOf(current.relational, priorNps(prior.relational, prior.total), 0),
           },
           transactional: {
-            value: npsFrom(
-              Number(agg.tx_p),
-              txTotal - Number(agg.tx_p) - Number(agg.tx_d),
-              Number(agg.tx_d),
-            ),
-            previousValue: null,
-            delta: null,
+            value: current.transactional,
+            previousValue: priorNps(prior.transactional, prior.total),
+            delta: deltaOf(current.transactional, priorNps(prior.transactional, prior.total), 0),
           },
           responseRate: {
-            value: Number(agg.eligible)
-              ? Number(((total / Number(agg.eligible)) * 100).toFixed(1))
-              : 0,
-            previousValue: null,
-            delta: null,
-            numerator: total,
-            denominator: Number(agg.eligible),
+            value: responseRate,
+            previousValue: priorResponseRate,
+            delta: deltaOf(responseRate, priorResponseRate, 1),
+            numerator: current.total,
+            denominator: current.eligibleInvitations,
           },
-          distribution: distribution(promoters, passives, detractors),
-          trend: [],
+          distribution: current.distribution,
+          trend: current.trend,
         },
         medicalTrust: {
           anxietyReductionDelta: {
-            value: 0,
-            previousValue: null,
-            delta: null,
+            value: ard,
+            previousValue: priorArd,
+            delta: deltaOf(ard, priorArd, 1),
+            numerator: current.improved,
+            denominator: current.pairs,
+            status: trustStatus("ard", ard),
             target: { operator: "gt", value: 75 },
           },
           clinicalComprehensionScore: {
-            value: 0,
-            previousValue: null,
-            delta: null,
+            value: ccs,
+            previousValue: priorCcs,
+            delta: deltaOf(ccs, priorCcs, 1),
+            numerator: current.understood,
+            denominator: current.answers,
+            status: trustStatus("ccs", ccs),
             target: { operator: "gt", value: 85 },
           },
           hallucinationFlagRate: {
-            value: total
-              ? Number(((Number(agg.hallucination_flagged) / total) * 100).toFixed(2))
-              : 0,
-            previousValue: null,
-            delta: null,
+            value: hfr,
+            previousValue: priorHfr,
+            delta: deltaOf(hfr, priorHfr, 2),
+            numerator: current.mismatchSessions,
+            denominator: current.eligibleSessions,
+            status: trustStatus("hfr", hfr),
             target: { operator: "lt", value: 0.2 },
           },
           disclaimerFatigueIndex: {
-            value: 0,
-            previousValue: null,
-            delta: null,
+            value: dfi,
+            previousValue: priorDfi,
+            delta: deltaOf(dfi, priorDfi, 1),
+            numerator: current.fatigued,
+            denominator: current.exposed,
+            status: trustStatus("dfi", dfi),
             target: { operator: "lt", value: 5 },
           },
         },
         closedLoop: {
-          medianTimeToFirstContactSeconds:
-            medianAgg.median_seconds !== null ? Math.round(Number(medianAgg.median_seconds)) : null,
+          medianTimeToFirstContactSeconds: current.medianSeconds,
           closeRate: {
-            value: closedPeriod ? Number(((resolvedPeriod / closedPeriod) * 100).toFixed(1)) : 0,
-            previousValue: null,
-            delta: null,
+            value: closeRate,
+            previousValue: priorClose,
+            delta: deltaOf(closeRate, priorClose, 1),
           },
-          openP0Count: Number(p0.open_p0),
+          openP0Count: current.openP0,
         },
       };
     },
@@ -220,13 +378,13 @@ export function createPostgresRepository(pool: Pool): Repository {
            SELECT * FROM fact_nps_response WHERE ${clause}
          ),
          aspect_agg AS (
-           SELECT b.feature_touchpoint_id, e->>'aspect' AS aspect, sum(abs((e->>'polarity')::numeric)) AS impact
+           SELECT b.feature_touchpoint_id, e->>'aspect' AS aspect, sum((e->>'polarity')::numeric) AS impact
            FROM base b, jsonb_array_elements(b.aspects) e
            GROUP BY b.feature_touchpoint_id, e->>'aspect'
          ),
          top_driver AS (
            SELECT DISTINCT ON (feature_touchpoint_id) feature_touchpoint_id, aspect, impact
-           FROM aspect_agg ORDER BY feature_touchpoint_id, impact DESC
+           FROM aspect_agg ORDER BY feature_touchpoint_id, abs(impact) DESC
          )
          SELECT f.feature_key, f.feature_name,
            count(b.response_id) AS response_count,
@@ -243,15 +401,41 @@ export function createPostgresRepository(pool: Pool): Repository {
         params,
       );
 
+      const prior = buildFilterClause(previousFilters(filters), 1);
+      const { rows: priorRows } = await pool.query(
+        `WITH base AS (
+           SELECT * FROM fact_nps_response WHERE ${prior.clause}
+         )
+         SELECT f.feature_key,
+           count(b.response_id) AS response_count,
+           count(*) FILTER (WHERE b.nps_tier = 'promoter') AS promoters,
+           count(*) FILTER (WHERE b.nps_tier = 'passive') AS passives,
+           count(*) FILTER (WHERE b.nps_tier = 'detractor') AS detractors
+         FROM dim_feature_touchpoint f
+         LEFT JOIN base b ON b.feature_touchpoint_id = f.feature_touchpoint_id
+         GROUP BY f.feature_key`,
+        prior.params,
+      );
+      const priorNps = new Map(
+        priorRows.map((row) => [
+          String(row.feature_key),
+          Number(row.response_count) === 0
+            ? null
+            : npsFrom(Number(row.promoters), Number(row.passives), Number(row.detractors)),
+        ]),
+      );
+
       return rows.map((r): FeatureMetric => {
         const promoters = Number(r.promoters);
         const passives = Number(r.passives);
         const detractors = Number(r.detractors);
+        const nps = npsFrom(promoters, passives, detractors);
+        const previous = priorNps.get(String(r.feature_key)) ?? null;
         return {
           featureKey: r.feature_key,
           featureName: r.feature_name,
-          nps: npsFrom(promoters, passives, detractors),
-          monthOverMonthDelta: null,
+          nps,
+          monthOverMonthDelta: previous === null ? null : nps - previous,
           responseCount: Number(r.response_count),
           distribution: distribution(promoters, passives, detractors),
           topDriver: r.top_aspect
@@ -277,10 +461,14 @@ export function createPostgresRepository(pool: Pool): Repository {
         `WITH base AS (SELECT * FROM fact_nps_response WHERE ${clause})
          SELECT f.feature_key, e->>'aspect' AS aspect,
            count(DISTINCT b.response_id) AS volume,
-           sum(GREATEST(0, -(e->>'polarity')::numeric)) AS neg_impact
+           sum((e->>'polarity')::numeric) AS net_polarity,
+           bool_or(COALESCE(o.critical, false)) AS critical_pin,
+           max(o.note) AS note
          FROM base b
-         JOIN dim_feature_touchpoint f ON f.feature_touchpoint_id = b.feature_touchpoint_id,
-           jsonb_array_elements(b.aspects) e
+         JOIN dim_feature_touchpoint f ON f.feature_touchpoint_id = b.feature_touchpoint_id
+         CROSS JOIN LATERAL jsonb_array_elements(b.aspects) e
+         LEFT JOIN fact_theme_override o
+           ON o.feature_key = f.feature_key AND o.aspect = e->>'aspect'
          GROUP BY f.feature_key, e->>'aspect'`,
         params,
       );
@@ -288,23 +476,24 @@ export function createPostgresRepository(pool: Pool): Repository {
       const points: QuadrantPointDto[] = [];
       for (const r of rows) {
         const volume = Number(r.volume);
-        const negImpact = Number(r.neg_impact);
+        const net = Number(r.net_polarity);
         const aspect = r.aspect as string;
-        const critical =
-          volume < QUADRANT_HIGH_VOLUME &&
-          negImpact >= QUADRANT_HIGH_IMPACT &&
-          CLINICAL_ASPECTS.has(aspect as AspectKey);
+        const critical = r.critical_pin === true;
         if (volume < minVolume && !critical) continue;
         if (criticalOnly && !critical) continue;
         points.push({
           id: `${r.feature_key}:${aspect}`,
-          theme: aspect.replace(/_/g, " "),
+          theme: r.note ? String(r.note) : aspect.replace(/_/g, " "),
           featureKey: r.feature_key,
           aspect,
           volume,
-          netSentimentImpact: Number(negImpact.toFixed(2)),
+          netSentimentImpact: Number(net.toFixed(2)),
           critical,
-          note: critical ? "Low volume, high impact — route to safety review." : "",
+          note: r.note
+            ? String(r.note)
+            : critical
+              ? "Low volume, high impact — route to safety review."
+              : "",
         });
       }
       return points;

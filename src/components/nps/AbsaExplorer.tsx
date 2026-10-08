@@ -1,7 +1,8 @@
 import { Stethoscope, Wrench } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { aspectRows, type Aspect } from "@/lib/nps-data";
+import type { Aspect } from "@/lib/nps-data";
+import { getLiveDashboard } from "@/lib/live-dashboard";
 import { MetricTooltip, SectionHeading } from "./shared";
 
 export function AbsaExplorer({
@@ -11,6 +12,7 @@ export function AbsaExplorer({
   selected: Aspect | null;
   onSelect: (a: Aspect | null) => void;
 }) {
+  const aspectRows = getLiveDashboard().aspects;
   return (
     <Card className="gap-0 p-5">
       <SectionHeading

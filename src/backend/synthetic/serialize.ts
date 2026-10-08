@@ -135,6 +135,7 @@ export function serializedFacts(corpus: Corpus): SerializedFacts {
       dead_clicks: session.deadClicks,
       events: session.events,
       linked_response_id: session.linkedResponseId,
+      cohort_key: session.cohortKey,
     })),
   };
 }
