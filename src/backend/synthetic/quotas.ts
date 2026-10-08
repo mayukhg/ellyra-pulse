@@ -2,6 +2,9 @@ import type { FeatureKey } from "../contracts";
 
 export const DEFAULT_SEED = 20260921;
 
+/** Serving id stamped on every synthetic session and response. Live traffic should send the Gemini id instead. */
+export const CORPUS_MODEL_VERSION = "ellyra-core-2026.5";
+
 export const FEATURE_WEIGHTS = [
   ["lab_blood_parser", 32],
   ["mri_imaging_insights", 16],

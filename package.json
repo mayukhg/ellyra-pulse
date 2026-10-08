@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
+    "eval:gemini": "bun scripts/eval-gemini.ts",
     "mixpanel:import": "tsx scripts/import-mixpanel-history.ts"
   },
   "overrides": {

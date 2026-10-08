@@ -89,6 +89,40 @@ const TREND_CASE = `CASE ${BUCKETS.map(
 
 const MISMATCH_ARRAY = `ARRAY[${MISMATCH_CODES.map((code) => `'${code}'`).join(",")}]::text[]`;
 
+async function hallucinationByModel(
+  pool: Pool,
+  filters: AnalyticsFilters,
+): Promise<ExecutiveMetricsResponse["hallucinationByModel"]> {
+  const { rows } = await pool.query(
+    `SELECT
+       s.model_version,
+       count(*) FILTER (WHERE s.eligible_clinical) AS eligible_sessions,
+       count(*) FILTER (WHERE s.eligible_clinical AND s.mismatch_codes && ${MISMATCH_ARRAY}) AS mismatch_sessions
+     FROM fact_clinical_session s
+     WHERE s.started_at >= $1::timestamptz AND s.started_at < $2::timestamptz
+       AND ($3::text IS NULL OR s.feature_key = $3)
+       AND (
+         $4::text IS NULL
+         OR s.user_cohort_id = (SELECT user_cohort_id FROM dim_user_cohort WHERE cohort_key = $4)
+       )
+     GROUP BY s.model_version
+     ORDER BY s.model_version`,
+    [filters.from, filters.to, filters.feature ?? null, filters.cohort ?? null],
+  );
+  return rows.map((row) => {
+    const numerator = Number(row.mismatch_sessions);
+    const denominator = Number(row.eligible_sessions);
+    const value = rateOrNull(numerator, denominator, 2) ?? 0;
+    return {
+      modelVersion: String(row.model_version),
+      value,
+      numerator,
+      denominator,
+      status: trustStatus("hfr", value),
+    };
+  });
+}
+
 function rateOrNull(numerator: number, denominator: number, digits: number): number | null {
   if (denominator === 0) return null;
   return Number(((numerator / denominator) * 100).toFixed(digits));
@@ -294,6 +328,7 @@ export function createPostgresRepository(pool: Pool): Repository {
           eligibleSurveys: current.eligibleInvitations,
           suppressed: current.total < 20,
         },
+        hallucinationByModel: await hallucinationByModel(pool, filters),
         nps: {
           overall: {
             value: current.overall,

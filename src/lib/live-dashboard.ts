@@ -79,7 +79,7 @@ function buildLive() {
       target: "Target < 0.20%",
       status: trust.hallucinationFlagRate.status ?? "alarm",
       delta: `${signed(trust.hallucinationFlagRate.delta ?? 0, 2)} pts MoM`,
-      blurb: `${trust.hallucinationFlagRate.numerator?.toLocaleString()} mismatch sessions among ${trust.hallucinationFlagRate.denominator?.toLocaleString()} eligible clinical sessions.`,
+      blurb: `${trust.hallucinationFlagRate.numerator?.toLocaleString()} mismatch sessions among ${trust.hallucinationFlagRate.denominator?.toLocaleString()} eligible clinical sessions. By model: ${executive.hallucinationByModel.map((row) => `${row.modelVersion} ${row.value.toFixed(2)}%`).join(", ")}.`,
     },
     {
       key: "disclaimer",

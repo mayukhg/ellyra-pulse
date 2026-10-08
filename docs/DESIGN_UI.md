@@ -231,10 +231,19 @@ export interface NpsDistribution {
   detractorsCount: number;
 }
 
+export interface ModelHallucinationRate {
+  modelVersion: string;
+  value: number;
+  numerator: number;
+  denominator: number;
+  status: "healthy" | "watch" | "alarm";
+}
+
 export interface ExecutiveMetricsResponse {
   generatedAt: IsoDateTime;
   period: { from: string; to: string; timezone: string };
   sample: { responses: number; eligibleSurveys: number; suppressed: boolean };
+  hallucinationByModel: ModelHallucinationRate[];
   nps: {
     overall: MetricValue;
     relational: MetricValue;
@@ -340,7 +349,7 @@ Definitions:
 - Response rate = valid responses / eligible delivered surveys × 100.
 - ARD = paired responses with lower post-explanation anxiety / valid paired anxiety responses × 100; target `>75%`.
 - CCS = users reporting understanding without third-party search / valid comprehension responses × 100; target `>85%`.
-- Hallucination flag rate = qualifying mismatch-flagged sessions / eligible clinical sessions × 100; alarm at `>=0.2%`.
+- Hallucination flag rate = qualifying mismatch-flagged sessions / eligible clinical sessions × 100; alarm at `>=0.2%`. The alarm does not page. `hallucinationByModel` repeats that rate for each `model_version` on `fact_clinical_session`.
 - Disclaimer fatigue = responses with negative disclaimer sentiment / responses mentioning or exposed to disclaimers, per the approved analytics definition; target `<5%`.
 - Time to First Contact = median `first_contact_at - created_at` for eligible tickets.
 - Close rate = tickets resolved / tickets created in period × 100. Do not silently switch to “tickets resolved in period.”
@@ -352,6 +361,9 @@ Example:
   "generatedAt": "2026-09-21T05:30:00Z",
   "period": { "from": "2026-08-22", "to": "2026-09-21", "timezone": "UTC" },
   "sample": { "responses": 12480, "eligibleSurveys": 52437, "suppressed": false },
+  "hallucinationByModel": [
+    { "modelVersion": "ellyra-core-2026.5", "value": 0.31, "numerator": 40, "denominator": 12903, "status": "alarm" }
+  ],
   "nps": {
     "overall": { "value": 57, "previousValue": 53, "delta": 4 },
     "relational": { "value": 52, "previousValue": 50, "delta": 2 },
@@ -388,7 +400,9 @@ Sort by response count descending by default. `topDriver` must come from the sam
 
 **Response:** `{ data: QuadrantPointDto[]; thresholds: { highVolume: 300; highAbsoluteImpact: 4 }; meta }`.
 
-`netSentimentImpact` must be a documented, versioned model output. Return the analysis model version in `meta`. Safety-critical themes can never be removed solely by `minVolume`; return them with `critical: true`.
+The running chart classifies high impact as `|sum of polarity| >= volume × 0.4` and keeps a theme when `critical` is true even if volume is under 300. See `docs/METRICS.md`. The `thresholds` object above is the legacy constant pair still returned by the route.
+
+`netSentimentImpact` is the sum of aspect polarity in the selected period. Return the analysis model version in `meta`. Safety-critical themes can never be removed solely by `minVolume`; return them with `critical: true`.
 
 ### 5.4 `GET /api/v1/analysis/absa`
 

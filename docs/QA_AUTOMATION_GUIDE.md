@@ -176,10 +176,13 @@ Exercise the full score range against `/workflow/simulate` (no persistence neede
 
 ### P2 — aggregate correctness
 
-Ingest a known batch of responses (fixed scores/features/aspects) and verify
-`/metrics/executive` and `/metrics/features` compute NPS as `%promoters − %detractors` exactly,
-and that `/analysis/quadrant`'s `critical` flag only ever appears for volume < 300 AND clinical
-aspects.
+Ingest a known batch, or use the seeded corpus, and verify `/metrics/executive` and
+`/metrics/features` follow `docs/METRICS.md`. NPS is `npsOf` (one-decimal tier shares, then the
+rounded difference), not a raw subtraction of unrounded percentages. Quadrant `critical` is the
+theme-override pin. Volume does not remove it. Net sentiment impact is the sum of polarity.
+
+The quota check is `bun scripts/verify-synthetic-quotas.ts`. The Gemini reason-code harness is
+`bun run eval:gemini` and is specified in `docs/EVALS.md`. It does not grade this corpus.
 
 ### P2 — cross-backend parity
 

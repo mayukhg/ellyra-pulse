@@ -32,6 +32,7 @@ export function serializedFacts(corpus: Corpus): SerializedFacts {
       eligible_clinical: session.eligibleClinical,
       mismatch_codes: session.mismatchCodes,
       harm_codes: session.harmCodes,
+      model_version: session.modelVersion,
     })),
     "survey_invitations.jsonl": corpus.invitations.map((invitation) => ({
       invitation_id: invitation.invitationId,

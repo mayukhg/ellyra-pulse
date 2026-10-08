@@ -1,5 +1,8 @@
 # Validation Report — Phase 2 & Phase 3 Implementation
 
+Later metric and eval work is documented in [`METRICS.md`](METRICS.md) and [`EVALS.md`](EVALS.md).
+The pass count below is the 21 September 2026 run, not the current suite.
+
 Date: 2026-09-21. Scope: the Phase 2 (real backend) and Phase 3 (production routing) work
 described in the root `README.md` roadmap. This report covers what was built, how it was
 validated, every bug the validation process actually found and fixed, and what is knowingly

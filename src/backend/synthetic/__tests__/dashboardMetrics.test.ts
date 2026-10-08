@@ -51,6 +51,15 @@ describe("dashboard metrics from the quota corpus", () => {
       numerator: 40,
       denominator: 12903,
     });
+    expect(executive.hallucinationByModel).toEqual([
+      {
+        modelVersion: "ellyra-core-2026.5",
+        value: 0.31,
+        numerator: 40,
+        denominator: 12903,
+        status: "alarm",
+      },
+    ]);
     expect(executive.medicalTrust.disclaimerFatigueIndex).toMatchObject({
       value: 6.8,
       previousValue: 5.6,

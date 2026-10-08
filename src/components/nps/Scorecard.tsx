@@ -237,7 +237,7 @@ export function Scorecard() {
                     {k.key === "ccs" &&
                       "Clinical Comprehension Score is the percentage of users who understood the explanation without a third-party search; target >85%."}
                     {k.key === "hallucination" &&
-                      "The share of sessions with a reported clinical mismatch or inaccuracy. At or above 0.2%, the metric enters the P0 safety threshold."}
+                      "The share of eligible clinical sessions with a mismatch code. The card alarms at or above 0.20%. Paging stays on each P0 response, not on this rate. The blurb splits the same rate by serving model."}
                     {k.key === "disclaimer" &&
                       "The share of feedback with negative sentiment about defensive legal or safety disclaimers; target <5%."}
                   </MetricTooltip>

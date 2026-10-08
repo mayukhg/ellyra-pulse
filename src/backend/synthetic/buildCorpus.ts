@@ -6,6 +6,7 @@ import {
   CCS,
   CLOCKS,
   COHORTS,
+  CORPUS_MODEL_VERSION,
   DEFAULT_SEED,
   DFI,
   HARM_CODES,
@@ -38,6 +39,7 @@ export interface CorpusSession {
   eligibleClinical: boolean;
   mismatchCodes: string[];
   harmCodes: string[];
+  modelVersion: string;
   bucketId: BucketQuota["id"];
 }
 
@@ -334,6 +336,7 @@ function buildBucket(
       harmCodes: response.safetyReasonCodes.filter((code) =>
         (HARM_CODES as readonly string[]).includes(code),
       ),
+      modelVersion: response.modelVersion,
       bucketId: bucket.id,
     };
     sessions.push(session);
@@ -372,6 +375,7 @@ function buildBucket(
       eligibleClinical: true,
       mismatchCodes: [],
       harmCodes: [],
+      modelVersion: CORPUS_MODEL_VERSION,
       bucketId: bucket.id,
     };
     sessions.push(session);
@@ -465,7 +469,7 @@ function draftResponses(
       safetyReasonCodes: [],
       safetyConfidence: null,
       routeAction: routeFor(survey.tier, false),
-      modelVersion: "ellyra-core-2026.5",
+      modelVersion: CORPUS_MODEL_VERSION,
       classifierVersion: "synthetic-quota-v1",
       processingStatus: "routed",
       createdAt: receivedAt,

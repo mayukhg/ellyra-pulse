@@ -92,6 +92,7 @@ async function main() {
         "eligible_clinical",
         "mismatch_codes",
         "harm_codes",
+        "model_version",
       ],
       sessions,
       { mismatch_codes: "text[]", harm_codes: "text[]" },

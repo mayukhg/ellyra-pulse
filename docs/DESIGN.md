@@ -215,6 +215,11 @@ response's context object precisely so this join is possible.
 
 ## 6. Metrics Dashboard
 
+Implemented formulas, windows, and the demo figures are in [`METRICS.md`](METRICS.md). The
+wireframe below is the original layout sketch. Where a number here disagrees with `METRICS.md`,
+the metrics document and `src/backend/synthetic/dashboardMetrics.ts` are the ones the app runs.
+Model evaluation is a separate harness: [`EVALS.md`](EVALS.md).
+
 ### 6.1 Top-line (exec view)
 - NPS (rolling 30/90-day), trend line with release markers annotated.
 - **Relational vs. transactional NPS** — the quarterly pulse score (relational, brand-level)

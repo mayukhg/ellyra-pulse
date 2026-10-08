@@ -99,10 +99,21 @@ export interface NpsDistribution {
   detractorsCount: number;
 }
 
+/** Hallucination flag rate for one serving model inside the selected window. */
+export interface ModelHallucinationRate {
+  modelVersion: string;
+  value: number;
+  numerator: number;
+  denominator: number;
+  status: "healthy" | "watch" | "alarm";
+}
+
 export interface ExecutiveMetricsResponse {
   generatedAt: IsoDateTime;
   period: { from: string; to: string; timezone: string };
   sample: { responses: number; eligibleSurveys: number; suppressed: boolean };
+  /** Eligible clinical sessions grouped by the model that served them. Same formula as hallucinationFlagRate. */
+  hallucinationByModel: ModelHallucinationRate[];
   nps: {
     overall: MetricValue;
     relational: MetricValue;

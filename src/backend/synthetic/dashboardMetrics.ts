@@ -266,6 +266,33 @@ function npsMetric(current: CorpusResponse[], previous: CorpusResponse[]): Metri
   return metric(value, previousValue, 0);
 }
 
+export function corpusHallucinationByModel(
+  corpus: Corpus,
+  filters: AnalyticsFilters,
+): ExecutiveMetricsResponse["hallucinationByModel"] {
+  const lookup = indexes(corpus, filters);
+  const groups = new Map<string, { eligible: number; mismatch: number }>();
+  for (const session of corpus.sessions) {
+    if (!sessionMatches(session, filters, lookup, true) || !session.eligibleClinical) continue;
+    const group = groups.get(session.modelVersion) ?? { eligible: 0, mismatch: 0 };
+    group.eligible += 1;
+    if (session.mismatchCodes.some((code) => MISMATCH.has(code))) group.mismatch += 1;
+    groups.set(session.modelVersion, group);
+  }
+  return [...groups.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([modelVersion, group]) => {
+      const value = rate(group.mismatch, group.eligible, 2) ?? 0;
+      return {
+        modelVersion,
+        value,
+        numerator: group.mismatch,
+        denominator: group.eligible,
+        status: trustStatus("hfr", value),
+      };
+    });
+}
+
 export function corpusExecutive(
   corpus: Corpus,
   filters: AnalyticsFilters,
@@ -297,6 +324,7 @@ export function corpusExecutive(
       eligibleSurveys: currentTrust.eligibleInvitations,
       suppressed: rows.length < PRIVACY_MIN,
     },
+    hallucinationByModel: corpusHallucinationByModel(corpus, filters),
     nps: {
       overall: npsMetric(rows, priorRows),
       relational: npsMetric(

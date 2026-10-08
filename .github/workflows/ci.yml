@@ -38,6 +38,7 @@ jobs:
           PGPASSWORD=ellyra_dev_pw psql -h 127.0.0.1 -U ellyra -d ellyra_pulse --set ON_ERROR_STOP=1 -f db/migrations/0001_init.sql
           PGPASSWORD=ellyra_dev_pw psql -h 127.0.0.1 -U ellyra -d ellyra_pulse --set ON_ERROR_STOP=1 -f db/migrations/0002_synthetic_metrics.sql
           PGPASSWORD=ellyra_dev_pw psql -h 127.0.0.1 -U ellyra -d ellyra_pulse --set ON_ERROR_STOP=1 -f db/migrations/0003_telemetry_cohort.sql
+          PGPASSWORD=ellyra_dev_pw psql -h 127.0.0.1 -U ellyra -d ellyra_pulse --set ON_ERROR_STOP=1 -f db/migrations/0004_session_model_version.sql
         env:
           PGPASSWORD: ellyra_dev_pw
 
@@ -47,6 +48,9 @@ jobs:
         run: |
           bun scripts/generate-synthetic-data.mjs
           bun scripts/verify-synthetic-quotas.ts
+
+      - name: Validate the Gemini eval set
+        run: bun scripts/eval-gemini.ts
 
       - name: Seed the synthetic dataset
         run: bun scripts/seed-postgres.mjs

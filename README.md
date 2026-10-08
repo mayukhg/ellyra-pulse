@@ -72,10 +72,7 @@ Three commitments carry the vision into the system design in `docs/DESIGN.md` an
 
 ## Current implementation
 
-**Prototype UI** (`src/routes/`, `src/components/nps/`) — a Lovable-built React/TanStack Start
-app with mock data (`src/lib/nps-data.ts`) rendering the executive scorecard, feature-level NPS
-table, root-cause quadrant, ABSA explorer, verbatim/closed-loop hub, and a workflow simulator.
-Not yet wired to the backend below.
+**Prototype UI** (`src/routes/`, `src/components/nps/`) — the executive scorecard, feature table, root-cause quadrant, ABSA explorer, and closed-loop stats read the seeded corpus through `src/lib/live-dashboard.ts`. Definitions and the demo figures are in [`docs/METRICS.md`](docs/METRICS.md). Verbatim cards are still the 12 fixtures in `src/lib/nps-data.ts`. Closed-loop buttons confirm in the UI and do not persist.
 
 **Backend** (`src/backend/`):
 - `contracts.ts`: shared TypeScript types and zod validation schemas for every request/response.
@@ -100,13 +97,19 @@ Not yet wired to the backend below.
 
 **Database schema** (`db/migrations/`) — the canonical schema, runnable via
 `scripts/setup-postgres.sh` (creates the role/db and applies `0001_init.sql`,
-`0002_synthetic_metrics.sql`, and `0003_telemetry_cohort.sql`) and seedable with the synthetic dataset via
+`0002_synthetic_metrics.sql`, `0003_telemetry_cohort.sql`, and `0004_session_model_version.sql`) and seedable with the synthetic dataset via
 `scripts/seed-postgres.mjs`.
 
 **Synthetic dataset** — a seeded quota corpus (`src/backend/synthetic/buildCorpus.ts`) covering
 NPS, survey invitations, clinical sessions, closed-loop clocks, redaction quarantine, and
 patient-session telemetry. The in-memory store builds it on first use. Postgres loads the JSONL
-written by `bun scripts/generate-synthetic-data.mjs`. See `data/synthetic/README.md`.
+written by `bun scripts/generate-synthetic-data.mjs`. Metric formulas are in
+[`docs/METRICS.md`](docs/METRICS.md). See `data/synthetic/README.md`.
+
+**Gemini eval** (`src/backend/eval/`, `bun run eval:gemini`) — a black-box reason-code check
+for a closed Gemini model. The committed gold set is an unsigned draft, so it cannot promote a
+version. No model is called unless `GEMINI_EVAL_ENDPOINT` points at a BAA-covered HTTPS endpoint.
+See [`docs/EVALS.md`](docs/EVALS.md).
 
 **Behavioural telemetry (Hotjar)** (`src/lib/hotjar.ts`, `src/components/analytics/`) — an
 SSR-safe Hotjar wrapper initialised from the root layout, fixed-name product events (filters, tab
@@ -117,18 +120,15 @@ builds: a floating QA harness (`?debug=hotjar`) and a synthetic-data insights da
 [`docs/HOTJAR_TELEMETRY.md`](docs/HOTJAR_TELEMETRY.md), and
 [`docs/PRIVACY_HOTJAR_DPIA.md`](docs/PRIVACY_HOTJAR_DPIA.md) before enabling it for real users.
 
-**Tests** (`bun run test`) — 46 backend vitest tests (`src/backend/**/__tests__/`) covering
-redaction, the safety gate, ABSA, routing, JWT/HMAC auth, paging, shadow mode, and full
-request/response integration through the dispatcher — run against both the in-memory repository
-(always) and the real Postgres repository (when `DATABASE_URL` is set) — plus 13 frontend tests
-(`src/test/hotjar.test.ts`) for the Hotjar wrapper, synthetic fixtures, and dashboard metrics. See
-`docs/VALIDATION_REPORT.md` for the full run, including the real bugs the tests caught before
-this ever reached a repo history.
+**Tests** (`bun run test`) — backend vitest tests (`src/backend/**/__tests__/`) covering
+redaction, the safety gate, lexicon ABSA, routing, JWT/HMAC auth, paging, shadow mode, the
+quota corpus, dashboard metrics, the Gemini eval scorer, and full request/response integration
+through the dispatcher — run against both the in-memory repository (always) and the real Postgres
+repository (when `DATABASE_URL` is set) — plus frontend tests (`src/test/`) for the Hotjar wrapper
+and its synthetic fixtures. `docs/VALIDATION_REPORT.md` records an earlier run and is not the
+current count. What those tests do and do not decide is in [`docs/EVALS.md`](docs/EVALS.md).
 
-**CI** (`.github/workflows/ci.yml`) — runs the test suite against both repositories with a real
-Postgres service container (migrated and seeded from `data/synthetic/` before the Postgres run),
-plus `tsc --noEmit` and `eslint` scoped to `src/backend` (the new Hotjar files are Prettier-clean
-but not yet in CI's lint scope).
+**CI** (`.github/workflows/ci.yml`) — applies migrations through `0004_session_model_version.sql`, generates and verifies the quota corpus, checks the Gemini gold set without calling a model, seeds Postgres, then runs the test suite against both repositories, plus `tsc --noEmit` and `eslint` scoped to `src/backend`.
 
 ### Known gaps and caveats (read before treating this as production-ready)
 
@@ -148,8 +148,11 @@ but not yet in CI's lint scope).
 - **Realtime is single-process.** The SSE event stream is an in-memory pub/sub — it works
   correctly but doesn't fan out across multiple server instances; that needs a shared broker
   (e.g. Redis pub/sub) before horizontal scaling.
-- **Frontend is not yet wired to the backend** — `src/lib/nps-data.ts` mock data is still what
-  the UI renders from.
+- **The scorecard is on the corpus; verbatim cards are not.** Feature, quadrant, ABSA, and
+  closed-loop stats come from `getLiveDashboard()`. The verbatim list is still the fixtures in
+  `src/lib/nps-data.ts`, and closed-loop actions do not persist.
+- **The Gemini gold set is unsigned.** `bun run eval:gemini` validates draft cases and will not
+  promote a model until a clinician sets held-out rows to `signed`. See `docs/EVALS.md`.
 - **Hotjar is not cleared for real patient data.** Hotjar does not sign a HIPAA BAA, masking
   via `data-hj-suppress` is opt-in per element, and `initHotjar()` is not yet gated on user
   consent (required for UK/EU users). Until the decisions in `docs/PRIVACY_HOTJAR_DPIA.md` are
@@ -169,8 +172,8 @@ but not yet in CI's lint scope).
 3. Replace the heuristic name-redaction pass with the approved medical NER service, keeping the
    existing regression test corpus (`src/backend/ingestion/__tests__/redaction.test.ts`) as a
    baseline and expanding it (OCR spacing, Unicode, adversarial text).
-4. Connect the prototype UI's TanStack Query hooks to the real endpoints, surface by surface,
-   replacing `src/lib/nps-data.ts` imports.
+4. Replace the remaining verbatim fixtures in `src/lib/nps-data.ts` with corpus or API reads, and
+   persist closed-loop actions. The scorecard path already uses `src/lib/live-dashboard.ts`.
 5. Move realtime pub/sub to a shared broker before running more than one server instance.
 6. Resolve the Hotjar privacy decisions (`docs/PRIVACY_HOTJAR_DPIA.md` §5), then add consent
    gating to `initHotjar()` and wire `resetHotjarUser()` into logout once auth exists.

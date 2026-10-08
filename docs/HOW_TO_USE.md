@@ -5,11 +5,9 @@ A walkthrough of every workflow implemented in the dashboard UI (`src/routes/ind
 `/dev/hotjar-insights`), with the exact clicks each one takes. See `README.md` for how to start
 the app and `docs/QA_AUTOMATION_GUIDE.md` for the backend API surface.
 
-> **Current state:** the UI you'll read about here renders from the prototype's mock dataset
-> (`src/lib/nps-data.ts`), not yet from the live backend in `src/backend/`. Every closed-loop
-> action (paging, ticket creation, review prompts) shows a confirmation toast but doesn't persist
-> anywhere yet — see README's "Known gaps" section. The workflows and UI steps below are exactly
-> what's implemented today.
+> **Current state:** scorecard, feature, quadrant, ABSA, and closed-loop stats are computed from
+> the seeded corpus (`docs/METRICS.md`). Verbatim cards are still the 12 fixtures in
+> `src/lib/nps-data.ts`. Closed-loop actions show a confirmation toast and do not persist.
 
 The app has four tabs, each its own workflow (Workflow 5 covers the separate developer tools). Three of them (Scorecard, Root Cause & ABSA,
 Verbatims) share a single set of filters, so a selection made in one tab narrows what you see in

@@ -13,11 +13,17 @@ DATABASE_URL=postgres://ellyra:ellyra_dev_pw@127.0.0.1:5432/ellyra_pulse bun scr
 ```
 
 `data/synthetic/generated/` is gitignored. Apply `db/migrations/0001_init.sql`,
-`db/migrations/0002_synthetic_metrics.sql`, and `db/migrations/0003_telemetry_cohort.sql`
-before seeding (`scripts/setup-postgres.sh` does all three on a fresh database).
+`db/migrations/0002_synthetic_metrics.sql`, `db/migrations/0003_telemetry_cohort.sql`, and
+`db/migrations/0004_session_model_version.sql`
+before seeding (`scripts/setup-postgres.sh` does all four on a fresh database).
 
 Edit the quotas in `src/backend/synthetic/quotas.ts` rather than the JSONL. The verifier exits
 non-zero when a published rate misses. Headline counts are assigned, not drawn with `Math.random`.
+Formulas and the demo scorecard figures are in `docs/METRICS.md`. This corpus is not a model eval
+(`docs/EVALS.md`).
+
+Every clinical session is stamped `ellyra-core-2026.5` (`model_version`). The hallucination rate
+for that single version matches the headline rate.
 
 ## What the corpus contains
 
