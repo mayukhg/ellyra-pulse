@@ -124,8 +124,9 @@ request/response integration through the dispatcher — run against both the in-
 this ever reached a repo history.
 
 **CI** (`.github/workflows/ci.yml`) — runs the test suite against both repositories with a real
-Postgres service container, plus `tsc --noEmit` and `eslint` scoped to `src/backend` (the new
-Hotjar files are Prettier-clean but not yet in CI's lint scope).
+Postgres service container (migrated and seeded from `data/synthetic/` before the Postgres run),
+plus `tsc --noEmit` and `eslint` scoped to `src/backend` (the new Hotjar files are Prettier-clean
+but not yet in CI's lint scope).
 
 ### Known gaps and caveats (read before treating this as production-ready)
 

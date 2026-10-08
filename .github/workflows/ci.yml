@@ -38,6 +38,14 @@ jobs:
         env:
           PGPASSWORD: ellyra_dev_pw
 
+      # The Postgres suite asserts executive metrics are non-zero
+      # (router.integration.postgres.test.ts). The migration only seeds dimensions, so load the
+      # synthetic dataset before those tests run.
+      - name: Seed the synthetic dataset
+        run: bun scripts/seed-postgres.mjs
+        env:
+          DATABASE_URL: postgres://ellyra:ellyra_dev_pw@127.0.0.1:5432/ellyra_pulse
+
       - name: Run tests against the in-memory repository
         run: bun run test
 
