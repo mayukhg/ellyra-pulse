@@ -160,7 +160,7 @@ export function Scorecard() {
                     color: "var(--popover-foreground)",
                   }}
                 />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Legend wrapperStyle={{ fontSize: 12, color: "var(--foreground)" }} />
                 <Area
                   type="monotone"
                   dataKey="relational"
