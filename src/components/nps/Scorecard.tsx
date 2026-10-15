@@ -13,6 +13,7 @@ import { AlertTriangle, ArrowDownRight, ArrowUpRight, HeartPulse, ShieldCheck } 
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { getLiveDashboard } from "@/lib/live-dashboard";
+import { track } from "@/lib/mixpanel";
 import { MetricTooltip, SectionHeading } from "./shared";
 
 function frustrationBand(value: number) {
@@ -53,6 +54,13 @@ function Delta({ value, suffix = "" }: { value: number; suffix?: string }) {
 export function Scorecard() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    track("trend_analyzed", {
+      metric_name: "overall_nps",
+      companion_id: "all",
+      time_range: "rolling_30_days",
+    });
+  }, []);
   const { headline, medicalKpis, trend, operations } = getLiveDashboard();
   const dist = [
     { label: "Promoters (9-10)", value: headline.promoters, cls: "bg-promoter" },

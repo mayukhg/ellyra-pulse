@@ -14,7 +14,9 @@ import { Chip } from "@/components/nps/shared";
 import type { Aspect, Feature, QuadrantPoint } from "@/lib/nps-data";
 import { getLiveDashboard } from "@/lib/live-dashboard";
 import { trackHotjarEvent } from "@/lib/hotjar";
-import { trackMixpanelEvent } from "@/lib/mixpanel";
+import { track } from "@/lib/mixpanel";
+
+const DATE_RANGE = "rolling_30_days";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -45,33 +47,47 @@ function Index() {
   const [tab, setTabState] = useState("scorecard");
   const live = getLiveDashboard();
 
+  const companionId = feature ?? "all";
+
   const setFeature = (f: Feature | null) => {
     if (f) {
       trackHotjarEvent("filter_applied");
-      trackMixpanelEvent("filter_applied", { feature: f });
+      track("filter_applied", {
+        filter_type: "feature",
+        filter_value: f,
+        view_name: tab,
+      });
     }
     setFeatureState(f);
   };
   const setAspect = (a: Aspect | null) => {
     if (a) {
       trackHotjarEvent("filter_applied");
-      trackMixpanelEvent("filter_applied", { aspect: a });
+      track("filter_applied", {
+        filter_type: "aspect",
+        filter_value: a,
+        view_name: tab,
+      });
     }
     setAspectState(a);
   };
   const setTab = (t: string) => {
     trackHotjarEvent(`dashboard_tab_${t}_viewed`);
-    trackMixpanelEvent("dashboard_tab_viewed", { tab: t });
+    track("dashboard_viewed", {
+      view_name: t,
+      companion_id: companionId,
+      date_range_selected: DATE_RANGE,
+    });
     setTabState(t);
   };
 
   const selectTheme = (p: QuadrantPoint | null) => {
     if (p) {
       trackHotjarEvent("filter_applied");
-      trackMixpanelEvent("filter_applied", {
-        theme: p.theme,
-        feature: p.feature,
-        aspect: p.aspect,
+      track("filter_applied", {
+        filter_type: "theme",
+        filter_value: p.theme,
+        view_name: tab,
       });
     }
     setTheme(p);

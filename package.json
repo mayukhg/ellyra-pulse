@@ -12,7 +12,8 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "eval:gemini": "bun scripts/eval-gemini.ts",
-    "mixpanel:import": "tsx scripts/import-mixpanel-history.ts"
+    "mixpanel:import": "tsx scripts/import-mixpanel-history.ts",
+    "generate-data": "tsx scripts/generate-mixpanel-data.ts"
   },
   "overrides": {
     "rolldown": "1.2.1"

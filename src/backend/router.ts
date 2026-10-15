@@ -34,6 +34,11 @@ import { ABSA_CLASSIFIER_VERSION } from "./ingestion/absa";
 import { pageClinicalOnCall } from "./paging";
 import { loadSyntheticFixtures } from "./fixtures";
 import { getRepository } from "./repositories";
+import {
+  sentimentCategoryForScore,
+  severityFromReasonCodes,
+  trackServerEvent,
+} from "./analytics/mixpanelServer";
 import { randomUUID } from "node:crypto";
 
 let fixturesLoaded = false;
@@ -247,6 +252,37 @@ async function handleIngest(request: Request, requestId: string): Promise<Respon
   }
 
   const outcome = await repository.ingestResponse(body, requestId);
+  const companionId = body.featureKey ?? "unknown";
+  const phiApplied = outcome.processingStatus !== "failed";
+
+  trackServerEvent("sentiment_record_created", {
+    companion_id: companionId,
+    sentiment_score: body.score,
+    sentiment_category: sentimentCategoryForScore(body.score),
+    phi_redaction_applied: phiApplied,
+  });
+  trackServerEvent("nps_response_received", {
+    companion_id: companionId,
+    nps_score: body.score,
+    patient_segment: body.surveyType,
+    response_time_hours: 0,
+  });
+
+  if (outcome.safetyFlag) {
+    const severity = severityFromReasonCodes(outcome.safetyReasonCodes);
+    trackServerEvent("adverse_event_detected", {
+      companion_id: companionId,
+      severity,
+      event_type: outcome.safetyReasonCodes[0] ?? "safety_flag",
+      detection_method: "auto",
+    });
+    trackServerEvent("safety_gate_triggered", {
+      companion_id: companionId,
+      severity,
+      gate_type: outcome.routeAction ?? "clinical_gate",
+      auto_or_manual: "auto",
+    });
+  }
 
   if (outcome.routeAction === "p0_clinical_page") {
     const pageResult = await pageClinicalOnCall({
@@ -254,6 +290,14 @@ async function handleIngest(request: Request, requestId: string): Promise<Respon
       reasonCodes: outcome.safetyReasonCodes,
       slaSeconds: 15 * 60,
     });
+    if (pageResult.delivered) {
+      trackServerEvent("oncall_alert_sent", {
+        companion_id: companionId,
+        severity: severityFromReasonCodes(outcome.safetyReasonCodes),
+        alert_channel: "pagerduty",
+        recipient_role: "clinical_safety",
+      });
+    }
     if (!pageResult.delivered) {
       console.error(
         `[paging] P0 for response ${outcome.responseId} was NOT delivered (${pageResult.transport}: ${pageResult.detail ?? "unknown"})`,
