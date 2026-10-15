@@ -120,13 +120,24 @@ builds: a floating QA harness (`?debug=hotjar`) and a synthetic-data insights da
 [`docs/HOTJAR_TELEMETRY.md`](docs/HOTJAR_TELEMETRY.md), and
 [`docs/PRIVACY_HOTJAR_DPIA.md`](docs/PRIVACY_HOTJAR_DPIA.md) before enabling it for real users.
 
+**Product analytics (Mixpanel)** (`src/lib/mixpanel.ts`, `src/lib/mixpanel-events.ts`) — a typed,
+PHI-safe Mixpanel client (localStorage persistence, DNT respected, no session replay) initialised
+alongside Hotjar from the root layout. Catalogue events cover dashboard engagement, NPS/sentiment
+ingestion, and safety gating; `identify` / `reset` are ready for when workforce auth lands.
+Server-side ingest in `src/backend/analytics/mixpanelServer.ts` dual-tracks categorical props only
+(never verbatim or other PHI). Backfill ~90 days of synthetic events with
+`npm run generate-data` (or `-- --dry-run` to preview); older import path:
+`npm run mixpanel:import`. Live board:
+[Ellyra Pulse Mixpanel dashboard](https://mixpanel.com/project/4070033/view/4566488/app/boards#id=11588335).
+
 **Tests** (`bun run test`) — backend vitest tests (`src/backend/**/__tests__/`) covering
 redaction, the safety gate, lexicon ABSA, routing, JWT/HMAC auth, paging, shadow mode, the
 quota corpus, dashboard metrics, the Gemini eval scorer, and full request/response integration
 through the dispatcher — run against both the in-memory repository (always) and the real Postgres
-repository (when `DATABASE_URL` is set) — plus frontend tests (`src/test/`) for the Hotjar wrapper
-and its synthetic fixtures. `docs/VALIDATION_REPORT.md` records an earlier run and is not the
-current count. What those tests do and do not decide is in [`docs/EVALS.md`](docs/EVALS.md).
+repository (when `DATABASE_URL` is set) — plus frontend tests (`src/test/`) for the Hotjar wrapper,
+Mixpanel sanitisation / synthetic catalogue, and related fixtures. `docs/VALIDATION_REPORT.md`
+records an earlier run and is not the current count. What those tests do and do not decide is in
+[`docs/EVALS.md`](docs/EVALS.md).
 
 **CI** (`.github/workflows/ci.yml`) — applies migrations through `0004_session_model_version.sql`, generates and verifies the quota corpus, checks the Gemini gold set without calling a model, seeds Postgres, then runs the test suite against both repositories, plus `tsc --noEmit` and `eslint` scoped to `src/backend`.
 
@@ -262,6 +273,19 @@ in-memory store on first API request, or seeded into Postgres — see `data/synt
 In dev, the Hotjar QA harness sits collapsed in the bottom-right corner and the insights
 dashboard is at **http://127.0.0.1:5173/dev/hotjar-insights**. Full guide:
 [`docs/HOTJAR_TELEMETRY.md`](docs/HOTJAR_TELEMETRY.md).
+
+**Optional — Mixpanel product analytics:** set these in `.env` or `.env.local` (see
+`.env.example` / `.env.local.example`). Client tracking is disabled when the project token is
+unset. Service-account vars are only needed for `npm run generate-data` / `npm run mixpanel:import`.
+
+| Variable | Effect |
+|---|---|
+| `NEXT_PUBLIC_MIXPANEL_TOKEN` | Project token for the browser SDK (also accepts `VITE_MIXPANEL_TOKEN`) |
+| `MIXPANEL_SERVICE_ACCOUNT_USERNAME` | Service account user for the Import / Engage APIs |
+| `MIXPANEL_SERVICE_ACCOUNT_SECRET` | Service account secret (server-only; never ship to the client) |
+| `MIXPANEL_PROJECT_ID` | Numeric project id required by the Import API |
+
+Board: [Ellyra Pulse Mixpanel dashboard](https://mixpanel.com/project/4070033/view/4566488/app/boards#id=11588335).
 
 **Using the dashboard UI once it's running:** see [`docs/HOW_TO_USE.md`](docs/HOW_TO_USE.md) for
 a walkthrough of all four dashboard workflows (executive scorecard, root-cause drill-down,
